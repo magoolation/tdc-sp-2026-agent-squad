@@ -81,3 +81,6 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
+
+# Arquivos de lock do Office (aparecem quando o deck está aberto)
+~$*
