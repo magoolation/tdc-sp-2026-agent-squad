@@ -506,6 +506,40 @@ assinatura. Assinaturas internas, patrocinadas e de crédito falham com
 `Marketplace Subscription purchase eligibility check failed`. Modelos OpenAI são vendidos
 direto pela Azure e não têm esse requisito.
 
+### Modelos de raciocínio rejeitam `temperature`
+
+`gpt-5.5` responde `HTTP 400: Unsupported parameter: 'temperature' is not supported with
+this model`. O `gpt-5.4-mini`, no mesmo projeto, aceita normalmente. Enviar o parâmetro
+incondicionalmente acopla a escolha do modelo à configuração de sampling, e trocar por um
+modelo mais forte quebra o pipeline na primeira chamada. Aqui ele só é enviado quando
+explicitamente configurado — a saída estruturada com schema já é o que restringe esses
+agentes.
+
+### Um repositório recém-criado não tem branch nenhuma
+
+`gh repo create` produz um repositório com **zero commits e zero branches**, então
+`origin/main` não resolve e toda criação de worktree falha. Esse é o ponto de partida
+normal de uma entrega greenfield, não um caso de borda — a fábrica semeia o repositório
+com README e `.gitignore` antes de começar.
+
+### Um crítico de LLM nunca aprova nada
+
+O revisor de plano foi instruído a aprovar quando o plano estivesse executável. Em três
+execuções seguidas ele nunca aprovou: um modelo revisor sempre encontra mais uma coisa a
+dizer. O laço só terminava por esgotamento, gastando quatro minutos sem que o validador
+determinístico apontasse nada.
+
+A correção é hierárquica, não de prompt: **o validador determinístico é o portão, o
+crítico é conselho**. Um validador limpo mais uma rodada de crítica bastam, e os
+apontamentos restantes vão para a tela de aprovação humana em vez de se perderem no laço.
+Tempo caiu de 8,0 para 5,9 minutos, e os apontamentos passaram a ser vistos.
+
+### Avisos que ninguém conta ao agente não são corrigidos
+
+O `PLAN010` (requisito sem nenhum work item que o entregue) é um aviso, e o laço de revisão
+só devolvia ao arquiteto os problemas **bloqueantes**. Resultado: o mesmo requisito
+descoberto sobreviveu a três rodadas de revisão. Óbvio em retrospecto, invisível até rodar.
+
 ### `dotnet test` pode reportar "Zero tests ran" para uma suíte que passa
 
 No SDK .NET 10 com Microsoft.Testing.Platform, `dotnet test` reporta zero testes para uma
