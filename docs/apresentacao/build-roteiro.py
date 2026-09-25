@@ -234,10 +234,11 @@ rich([("Repositório: ", GREY), ("github.com/magoolation/tdc-sp-2026-agent-squad
 rich([("Deck: ", GREY), ("Agent-Squad-TDC-SP-2026.pptx", INK, False, True)], size=11, after=24)
 
 callout(
-    "Antes de tudo: preencha o slide 2",
-    "O slide 'Quem está falando' está com marcadores — [SEU CARGO], [SUA EMPRESA], a bio e os seus "
-    "perfis. Preencha e coloque sua foto antes de subir. É o único slide que eu não consigo escrever por você.",
-    color=RED, fill="FDECEC",
+    "O slide 2 está pronto",
+    "Nome, cargo, bio e perfis preenchidos, sem foto — como você pediu. Não sobrou marcador em "
+    "nenhum slide. Se quiser mexer em alguma palavra da bio, é edição direta no PowerPoint; "
+    "o resto do deck não depende dela.",
+    color=GREEN, fill="EAF7EE",
 )
 
 callout(
@@ -655,8 +656,9 @@ qa = [
      "limpeza de worktree garantida. Um grafo esconderia exatamente o controle que o operador mais precisa ver. "
      "Está documentado num ADR no repositório."),
     ("Quanto tempo levou para construir?",
-     "[Preencha com a sua resposta honesta.] E diga o que realmente consumiu o tempo: não foi prompt, "
-     "foi integração — versão de pacote, permissão, layout de runtime, hierarquia de autoridade."),
+     "Cheguei na primeira versão do produto em uma manhã. O resto do dia foi o que realmente consumiu "
+     "tempo, e não foi prompt: foi integração — versão de pacote, permissão, layout de runtime, "
+     "hierarquia de autoridade. Os oito achados da palestra saíram todos dessa parte, nenhum da manhã."),
     ("Posso usar no meu trabalho?",
      "MIT, está tudo no repositório: código, regras, runbook e a transcrição de exemplo."),
 ]

@@ -73,30 +73,29 @@ def slide_speaker():
     s = blank(prs)
     top = heading(s, "Quem está falando", kicker="Apresentação")
 
-    photo = box(s, MARGIN, top + Inches(0.15), Inches(3.1), Inches(3.1), fill=BG_SUNKEN)
-    pf = photo.text_frame
-    pf.vertical_anchor = MSO_ANCHOR.MIDDLE
-    write(pf, "[ sua foto aqui ]", size=15, color=DIM, align=PP_ALIGN.CENTER, space_after=0, first=True)
+    # Sem foto, por escolha do palestrante. O texto então ocupa a largura inteira e
+    # cresce: um slide de apresentação com um vazio de 3 polegadas à esquerda parece
+    # defeito, e este é o primeiro slide que a plateia lê com atenção.
+    left = MARGIN
+    width = CONTENT_W
 
-    left = MARGIN + Inches(3.5)
-    width = CONTENT_W - Inches(3.5)
+    f = textbox(s, left, top + Inches(0.3), width, Inches(0.9))
+    write(f, "Alexandre Costa", size=38, color=WHITE, bold=True, space_after=6, first=True)
+    write(f, "Cloud Solution Architect · AI & Apps · Microsoft", size=21, color=ACCENT, space_after=0)
 
-    f = textbox(s, left, top + Inches(0.2), width, Inches(0.8))
-    write(f, "Alexandre Costa", size=32, color=WHITE, bold=True, space_after=4, first=True)
-    write(f, "Cloud Solution Architect · AI & Apps · Microsoft", size=19, color=ACCENT, space_after=0)
+    f = textbox(s, left, top + Inches(1.65), width, Inches(1.5))
+    # Texto do palestrante, literal. Não é lugar para edição de terceiro.
+    write(f, "Pessoa desenvolvedora com deficiência visual apaixonado por tecnologia e "
+             "ativista da diversidade e inclusão. Palestrante internacional, Microsoft MVP "
+             "Reconnect e TDC rockStar. Cloud Solution Architect na Microsoft contribui com "
+             "a missão de empoderar cada pessoa e organização a conquistar mais.",
+          size=21, color=TEXT, space_after=0, line=1.35, first=True)
 
-    f = textbox(s, left, top + Inches(1.3), width, Inches(1.8))
-    # Rascunho a partir do que é verificável: o cargo e o que o projeto é. Ajuste à
-    # vontade — o que não se deve é subir com colchete no telão.
-    write(f, "Cloud Solution Architect na Microsoft, na área de IA e aplicações. Construí o "
-             "Agent Squad para responder na prática a uma pergunta que times de engenharia "
-             "fazem o tempo todo: dá para colocar agentes autônomos trabalhando em paralelo "
-             "sem perder o controle do que entra no repositório?",
-          size=17, color=MUTED, space_after=0, first=True)
-
-    chip(s, left, top + Inches(2.75), "github.com/magoolation", color=ACCENT)
-    chip(s, left + Inches(3.0), top + Inches(2.75), "linkedin.com/in/magoolation", color=VIOLET)
-    chip(s, left + Inches(6.4), top + Inches(2.75), "@magoolation", color=MUTED)
+    # Larguras explícitas: a automática é calibrada para 13pt e corta o texto em 15pt.
+    chip(s, left, top + Inches(3.3), "github.com/magoolation", color=ACCENT, width=Inches(2.9), size=15)
+    chip(s, left + Inches(3.2), top + Inches(3.3), "linkedin.com/in/magoolation",
+         color=VIOLET, width=Inches(3.5), size=15)
+    chip(s, left + Inches(7.0), top + Inches(3.3), "@magoolation", color=MUTED, width=Inches(1.9), size=15)
 
     f = textbox(s, MARGIN, H - Inches(1.55), CONTENT_W, Inches(0.6))
     rich(f, [
