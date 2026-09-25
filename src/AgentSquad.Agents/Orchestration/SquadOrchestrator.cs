@@ -751,6 +751,11 @@ public sealed partial class SquadOrchestrator(
         // integration branch into the base branch once.
         string integrationBranch = $"agent/run-{runId.Value}";
 
+        // Issues whose branch passed the gate but could not be merged. They are on GitHub as
+        // open pull requests and they are NOT on the integration branch, so the delivery
+        // pull request must not count them as delivered.
+        var conflicted = new HashSet<int>();
+
         await _gitClient.CreateIntegrationBranchAsync(
             _worktrees.RepositoryPath, integrationBranch, _gitHub.BaseBranch, cancellationToken);
 
@@ -808,10 +813,13 @@ public sealed partial class SquadOrchestrator(
 
             // Fold this wave into the integration branch, sequentially, so the next wave
             // starts from everything that came before it.
-            if (index < waves.Count - 1)
-            {
-                await IntegrateWaveAsync(waveOutcomes, integrationBranch, events, cancellationToken);
-            }
+            //
+            // The last wave is integrated too, and that is not an oversight: the delivery
+            // pull request proposes the integration branch, so a wave left out of it is work
+            // that never reaches the human. Skipping the final integration would open a
+            // delivery pull request that quietly omits the last wave.
+            conflicted.UnionWith(
+                await IntegrateWaveAsync(waveOutcomes, integrationBranch, events, cancellationToken));
         }
 
         // The delivery pull request: integration branch into the base branch.
@@ -821,7 +829,7 @@ public sealed partial class SquadOrchestrator(
         // requests on it as merged — normal stacked-pull-request behaviour — so the item
         // pull requests are review units, and this one is the decision.
         PullRequestRef? delivery = await OpenDeliveryPullRequestAsync(
-            plan, runId, integrationBranch, allOutcomes, allPullRequests, events, cancellationToken);
+            plan, runId, integrationBranch, allOutcomes, allPullRequests, conflicted, events, cancellationToken);
 
         if (delivery is not null)
         {
@@ -845,24 +853,28 @@ public sealed partial class SquadOrchestrator(
     /// <param name="integrationBranch">The branch holding everything the run produced.</param>
     /// <param name="outcomes">Every implementation outcome.</param>
     /// <param name="itemPullRequests">The per-item pull requests already opened.</param>
+    /// <param name="conflicted">Issues that passed the gate but could not be merged.</param>
     /// <param name="events">Event publisher.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The delivery pull request, or <see langword="null"/> when nothing passed.</returns>
+    /// <returns>The delivery pull request, or <see langword="null"/> when nothing was delivered.</returns>
     private async Task<PullRequestRef?> OpenDeliveryPullRequestAsync(
         DeliveryPlan plan,
         RunId runId,
         string integrationBranch,
         List<ImplementationOutcome> outcomes,
         List<PullRequestRef> itemPullRequests,
+        HashSet<int> conflicted,
         IRunEventPublisher events,
         CancellationToken cancellationToken)
     {
-        List<ImplementationOutcome> passed = [.. outcomes.Where(o => o.Validation.Passed)];
+        List<ImplementationOutcome> delivered =
+            [.. outcomes.Where(o => o.Validation.Passed && !conflicted.Contains(o.IssueNumber))];
 
-        if (passed.Count == 0)
+        if (delivered.Count == 0)
         {
             await events.PublishAsync(RunPhase.Delivery, RunEventLevel.Warning, "orchestrator",
-                "Nenhum work item passou no gate; não há o que entregar.", cancellationToken: cancellationToken);
+                "Nada chegou ao branch de integração; não há o que entregar.",
+                cancellationToken: cancellationToken);
 
             return null;
         }
@@ -870,7 +882,7 @@ public sealed partial class SquadOrchestrator(
         try
         {
             string body = DeliveryPullRequestRenderer.Render(
-                plan, runId.Value, integrationBranch, _gitHub.BaseBranch, outcomes, itemPullRequests);
+                plan, runId.Value, integrationBranch, _gitHub.BaseBranch, outcomes, itemPullRequests, conflicted);
 
             PullRequestRef delivery = await _issueTracker.CreatePullRequestAsync(
                 new PullRequestRequest(
@@ -879,7 +891,7 @@ public sealed partial class SquadOrchestrator(
                     HeadBranch: integrationBranch,
                     BaseBranch: _gitHub.BaseBranch,
                     IssueNumber: 0,
-                    Labels: outcomes.Count == passed.Count
+                    Labels: outcomes.Count == delivered.Count
                         ? ["agent-generated"]
                         : ["agent-generated", "needs-human"],
                     Draft: true),
@@ -919,13 +931,15 @@ public sealed partial class SquadOrchestrator(
     /// <param name="integrationBranch">The branch to accumulate onto.</param>
     /// <param name="events">Event publisher.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task that completes when the wave has been integrated.</returns>
-    private async Task IntegrateWaveAsync(
+    /// <returns>The issue numbers whose branches conflicted and are therefore not on the branch.</returns>
+    private async Task<List<int>> IntegrateWaveAsync(
         IEnumerable<(ImplementationOutcome Outcome, PullRequestRef? PullRequest)> waveOutcomes,
         string integrationBranch,
         IRunEventPublisher events,
         CancellationToken cancellationToken)
     {
+        var conflicted = new List<int>();
+
         foreach ((ImplementationOutcome outcome, PullRequestRef? pullRequest) in waveOutcomes)
         {
             if (pullRequest is null || !outcome.Validation.Passed)
@@ -936,17 +950,25 @@ public sealed partial class SquadOrchestrator(
             bool merged = await _gitClient.IntegrateAsync(
                 _worktrees.RepositoryPath, integrationBranch, outcome.BranchName, cancellationToken);
 
+            if (!merged)
+            {
+                conflicted.Add(outcome.IssueNumber);
+            }
+
             await events.PublishAsync(
                 RunPhase.Delivery,
                 merged ? RunEventLevel.Info : RunEventLevel.Warning,
                 "orchestrator",
                 merged
-                    ? $"`{outcome.BranchName}` integrado em `{integrationBranch}`; a próxima onda parte daqui."
+                    ? $"`{outcome.BranchName}` integrado em `{integrationBranch}`; é daqui que o resto da " +
+                      "execução parte e é isto que o pull request de entrega propõe."
                     : $"`{outcome.BranchName}` conflita com `{integrationBranch}`. O pull request fica aberto para " +
-                      "um humano resolver, e a próxima onda segue sem esta mudança.",
+                      "um humano resolver, e a execução segue sem esta mudança.",
                 outcome.IssueNumber,
                 cancellationToken: cancellationToken);
         }
+
+        return conflicted;
     }
 
     private async Task<(ImplementationOutcome Outcome, PullRequestRef? PullRequest)> ImplementOneAsync(

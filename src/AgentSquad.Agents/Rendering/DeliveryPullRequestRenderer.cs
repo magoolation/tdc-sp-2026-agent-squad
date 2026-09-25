@@ -25,6 +25,7 @@ public static class DeliveryPullRequestRenderer
     /// <param name="baseBranch">The branch being merged into.</param>
     /// <param name="outcomes">Every implementation outcome.</param>
     /// <param name="itemPullRequests">The per-item pull requests.</param>
+    /// <param name="conflicted">Issues that passed the gate but whose branch could not be merged.</param>
     /// <returns>The Markdown body.</returns>
     public static string Render(
         DeliveryPlan plan,
@@ -32,14 +33,22 @@ public static class DeliveryPullRequestRenderer
         string integrationBranch,
         string baseBranch,
         IReadOnlyList<ImplementationOutcome> outcomes,
-        IReadOnlyList<PullRequestRef> itemPullRequests)
+        IReadOnlyList<PullRequestRef> itemPullRequests,
+        IReadOnlySet<int> conflicted)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(outcomes);
         ArgumentNullException.ThrowIfNull(itemPullRequests);
+        ArgumentNullException.ThrowIfNull(conflicted);
 
-        IReadOnlyList<ImplementationOutcome> passed = [.. outcomes.Where(o => o.Validation.Passed)];
-        IReadOnlyList<ImplementationOutcome> failed = [.. outcomes.Where(o => !o.Validation.Passed)];
+        // Passing the gate is not the same as being on the branch: a change can be correct
+        // and still collide with what another item wrote. Both keep it out of this pull
+        // request, and a reviewer needs to be able to tell the two apart.
+        IReadOnlyList<ImplementationOutcome> delivered =
+            [.. outcomes.Where(o => o.Validation.Passed && !conflicted.Contains(o.IssueNumber))];
+
+        IReadOnlyList<ImplementationOutcome> missing =
+            [.. outcomes.Where(o => !o.Validation.Passed || conflicted.Contains(o.IssueNumber))];
 
         var byIssue = itemPullRequests
             .GroupBy(p => p.IssueNumber)
@@ -49,7 +58,7 @@ public static class DeliveryPullRequestRenderer
 
         builder.AppendLine("## A decisão é esta").AppendLine();
         builder.AppendLine(CultureInfo.InvariantCulture,
-            $"Este pull request leva **{passed.Count} de {outcomes.Count}** work items de `{integrationBranch}` " +
+            $"Este pull request leva **{delivered.Count} de {outcomes.Count}** work items de `{integrationBranch}` " +
             $"para `{baseBranch}`.");
         builder.AppendLine();
         builder.AppendLine("Os pull requests individuais abaixo são as **unidades de revisão** — leia-os para " +
@@ -60,8 +69,8 @@ public static class DeliveryPullRequestRenderer
         builder.AppendLine("## O que foi entregue").AppendLine();
         builder.AppendLine(plan.Overview).AppendLine();
 
-        builder.AppendLine("| Issue | Item | Área | Gate | Tentativas | Pull request |");
-        builder.AppendLine("|---|---|---|---|---|---|");
+        builder.AppendLine("| Issue | Item | Área | Gate | Neste branch | Tentativas | Pull request |");
+        builder.AppendLine("|---|---|---|---|---|---|---|");
 
         foreach (ImplementationOutcome outcome in outcomes.OrderBy(o => o.IssueNumber))
         {
@@ -76,6 +85,7 @@ public static class DeliveryPullRequestRenderer
                    .Append(" | ").Append(item?.Title ?? outcome.WorkItemKey)
                    .Append(" | `").Append(item?.Area ?? "—")
                    .Append("` | ").Append(outcome.Validation.Passed ? "✅" : "❌")
+                   .Append(" | ").Append(OnBranch(outcome, conflicted))
                    .Append(" | ").Append(outcome.Attempts.ToString(CultureInfo.InvariantCulture))
                    .Append(" | ").Append(pullRequest)
                    .AppendLine(" |");
@@ -83,19 +93,21 @@ public static class DeliveryPullRequestRenderer
 
         builder.AppendLine();
 
-        if (failed.Count > 0)
+        if (missing.Count > 0)
         {
             builder.AppendLine("## ⚠️ O que não entrou").AppendLine();
-            builder.AppendLine("Estes work items reprovaram no gate e **não estão** neste branch. As issues " +
-                               "continuam abertas e os pull requests deles seguem marcados `needs-human`.")
+            builder.AppendLine("Estes work items **não estão** neste branch. As issues continuam abertas e os " +
+                               "pull requests deles seguem marcados `needs-human`.")
                    .AppendLine();
 
-            foreach (ImplementationOutcome outcome in failed)
+            foreach (ImplementationOutcome outcome in missing)
             {
                 builder.Append("- **#").Append(outcome.IssueNumber.ToString(CultureInfo.InvariantCulture))
                        .Append("** — ").Append(outcome.Report.Summary)
-                       .Append(" _(reprovou em: ")
-                       .Append(string.Join(", ", outcome.Validation.Failures.Select(f => f.Kind)))
+                       .Append(" _(")
+                       .Append(outcome.Validation.Passed
+                           ? "passou no gate, mas conflitou ao integrar; precisa de resolução manual"
+                           : "reprovou em: " + string.Join(", ", outcome.Validation.Failures.Select(f => f.Kind)))
                        .AppendLine(")_");
             }
 
@@ -148,16 +160,24 @@ public static class DeliveryPullRequestRenderer
         builder.AppendLine("|---|---|");
         builder.Append("| Execução | `").Append(runId).AppendLine("` |");
         builder.Append("| Branch de integração | `").Append(integrationBranch).AppendLine("` |");
-        builder.Append("| Work items | ").Append(passed.Count.ToString(CultureInfo.InvariantCulture))
-               .Append('/').Append(outcomes.Count.ToString(CultureInfo.InvariantCulture)).AppendLine(" aprovados no gate |");
+        builder.Append("| Work items | ").Append(delivered.Count.ToString(CultureInfo.InvariantCulture))
+               .Append('/').Append(outcomes.Count.ToString(CultureInfo.InvariantCulture)).AppendLine(" neste branch |");
         builder.Append("| Tempo somado dos agentes | ")
                .Append(totalMinutes.ToString("F1", CultureInfo.InvariantCulture)).AppendLine(" min |");
         builder.AppendLine();
 
         builder.AppendLine("> 🤖 **Entrega produzida por agentes autônomos.**");
-        builder.AppendLine("> Cada mudança passou pelo mesmo gate exigido de um pull request humano.");
+        builder.AppendLine(missing.Count == 0
+            ? "> Cada mudança aqui passou pelo mesmo gate exigido de um pull request humano."
+            : "> Cada mudança aqui passou pelo mesmo gate exigido de um pull request humano — " +
+              "e o que não passou está listado acima, não escondido.");
         builder.AppendLine("> **O merge é seu.**");
 
         return builder.ToString();
     }
+
+    private static string OnBranch(ImplementationOutcome outcome, IReadOnlySet<int> conflicted) =>
+        !outcome.Validation.Passed ? "—"
+        : conflicted.Contains(outcome.IssueNumber) ? "⚠️ conflito"
+        : "✅";
 }

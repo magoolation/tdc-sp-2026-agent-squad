@@ -21,7 +21,8 @@ public sealed class DeliveryPullRequestRendererTests
             "agent/run-20260925-101500-abcdef",
             "main",
             [Outcome(11, "W-01", passed: true), Outcome(12, "W-02", passed: true)],
-            [PullRequest(31, 11), PullRequest(32, 12)]);
+            [PullRequest(31, 11), PullRequest(32, 12)],
+            NoConflicts);
 
         body.Should().Contain("| #11 |").And.Contain("| #12 |");
         body.Should().Contain("#31").And.Contain("#32");
@@ -37,7 +38,8 @@ public sealed class DeliveryPullRequestRendererTests
             "agent/run-20260925-101500-abcdef",
             "main",
             [Outcome(11, "W-01", passed: true)],
-            [PullRequest(31, 11)]);
+            [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().Contain("`agent/run-20260925-101500-abcdef`").And.Contain("`main`");
     }
@@ -51,7 +53,8 @@ public sealed class DeliveryPullRequestRendererTests
             "agent/run-20260925-101500-abcdef",
             "main",
             [Outcome(11, "W-01", passed: true), Outcome(12, "W-02", passed: false)],
-            [PullRequest(31, 11)]);
+            [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().Contain("O que não entrou");
         body.Should().Contain("**#12**");
@@ -68,7 +71,8 @@ public sealed class DeliveryPullRequestRendererTests
             "agent/run-20260925-101500-abcdef",
             "main",
             [Outcome(11, "W-01", passed: true)],
-            [PullRequest(31, 11)]);
+            [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().NotContain("O que não entrou");
     }
@@ -86,7 +90,8 @@ public sealed class DeliveryPullRequestRendererTests
         };
 
         string body = DeliveryPullRequestRenderer.Render(
-            Plan(), "20260925-101500-abcdef", "agent/run-x", "main", [outcome], [PullRequest(31, 11)]);
+            Plan(), "20260925-101500-abcdef", "agent/run-x", "main", [outcome], [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().Contain("O índice novo muda o plano de consulta do catálogo.");
         body.Should().Contain("Necessário mas deixado fora de escopo: Migração dos dados legados.");
@@ -97,7 +102,8 @@ public sealed class DeliveryPullRequestRendererTests
     {
         string body = DeliveryPullRequestRenderer.Render(
             Plan(), "20260925-101500-abcdef", "agent/run-x", "main",
-            [Outcome(11, "W-01", passed: true)], [PullRequest(31, 11)]);
+            [Outcome(11, "W-01", passed: true)], [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().Contain("**O merge é seu.**");
     }
@@ -107,7 +113,8 @@ public sealed class DeliveryPullRequestRendererTests
     {
         string body = DeliveryPullRequestRenderer.Render(
             Plan(), "20260925-101500-abcdef", "agent/run-x", "main",
-            [Outcome(11, "W-01", passed: true)], [PullRequest(31, 11)]);
+            [Outcome(11, "W-01", passed: true)], [PullRequest(31, 11)],
+            NoConflicts);
 
         body.Should().Contain("Paginação por cursor em vez de offset.");
     }
@@ -117,10 +124,48 @@ public sealed class DeliveryPullRequestRendererTests
     {
         string body = DeliveryPullRequestRenderer.Render(
             Plan(), "20260925-101500-abcdef", "agent/run-x", "main",
-            [Outcome(12, "W-02", passed: false)], []);
+            [Outcome(12, "W-02", passed: false)], [], NoConflicts);
 
         body.Should().Contain("| #12 |").And.Contain("| — |");
     }
+
+    [Fact]
+    public void Render_DoesNotCountAConflictedItemAsDelivered()
+    {
+        string body = DeliveryPullRequestRenderer.Render(
+            Plan(),
+            "20260925-101500-abcdef",
+            "agent/run-20260925-101500-abcdef",
+            "main",
+            [Outcome(11, "W-01", passed: true), Outcome(12, "W-02", passed: true)],
+            [PullRequest(31, 11), PullRequest(32, 12)],
+            new HashSet<int> { 12 });
+
+        body.Should().Contain("**1 de 2**");
+        body.Should().Contain("⚠️ conflito");
+        body.Should().Contain("O que não entrou");
+        body.Should().Contain("passou no gate, mas conflitou ao integrar");
+        body.Should().Contain("1/2 neste branch");
+    }
+
+    [Fact]
+    public void Render_SeparatesAGateFailureFromAnIntegrationConflict()
+    {
+        string body = DeliveryPullRequestRenderer.Render(
+            Plan(),
+            "20260925-101500-abcdef",
+            "agent/run-20260925-101500-abcdef",
+            "main",
+            [Outcome(11, "W-01", passed: false), Outcome(12, "W-02", passed: true)],
+            [PullRequest(31, 11), PullRequest(32, 12)],
+            new HashSet<int> { 12 });
+
+        body.Should().Contain("reprovou em: Test");
+        body.Should().Contain("passou no gate, mas conflitou ao integrar");
+        body.Should().Contain("**0 de 2**");
+    }
+
+    private static readonly HashSet<int> NoConflicts = [];
 
     private static DeliveryPlan Plan() =>
         new(
