@@ -103,10 +103,18 @@ public sealed partial class DotNetValidationGate(
         List<ValidationStep> steps,
         CancellationToken cancellationToken)
     {
+        // --artifacts-path on restore, not only on build.
+        //
+        // It relocates obj/ as well as bin/, so a restore without it writes the assets file
+        // to the default location while the build with it looks somewhere else, and the
+        // build fails with NETSDK1004 "Assets file ... not found". The failure is silent
+        // about its cause and lands on the coding agent, which then burns its repair
+        // attempts trying to fix code that was never broken. Every step that takes the flag
+        // has to agree on it.
         ValidationStep restore = await RunStepAsync(
             ValidationStepKind.Restore,
             worktree,
-            ["restore", solution],
+            ["restore", solution, "--artifacts-path", worktree.ArtifactsPath],
             cancellationToken);
 
         steps.Add(restore);
