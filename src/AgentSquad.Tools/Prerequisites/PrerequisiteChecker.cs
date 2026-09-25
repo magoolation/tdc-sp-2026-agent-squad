@@ -201,19 +201,37 @@ public sealed partial class PrerequisiteChecker(
         Match scopes = ScopesRegex().Match(output);
         string found = scopes.Success ? scopes.Groups["scopes"].Value : string.Empty;
 
-        // `repo` covers issues and pull requests. `workflow` is needed the moment an agent
-        // touches .github/workflows, which a greenfield delivery almost always does.
-        string[] required = ["repo", "workflow"];
-        string[] missing = [.. required.Where(s => !found.Contains($"'{s}'", StringComparison.OrdinalIgnoreCase))];
+        bool Has(string scope) => found.Contains($"'{scope}'", StringComparison.OrdinalIgnoreCase);
+
+        // `repo` is the one that genuinely blocks: without it there are no issues and no
+        // pull requests.
+        //
+        // `workflow` is only Recommended. It is required to push to .github/workflows
+        // through some credential types, but not all — a push of a workflow file succeeded
+        // here on a token without it. Treating it as blocking would stop a run that would
+        // have worked, so it is reported and left to the operator.
+        bool hasRepo = Has("repo");
+        bool hasWorkflow = Has("workflow");
+
+        if (!hasRepo)
+        {
+            return new PrerequisiteResult(
+                "GitHub token scopes",
+                PrerequisiteSeverity.Required,
+                false,
+                found.Length > 0 ? found : "unknown",
+                "gh auth refresh -h github.com -s repo");
+        }
 
         return new PrerequisiteResult(
             "GitHub token scopes",
-            PrerequisiteSeverity.Required,
-            missing.Length == 0,
+            PrerequisiteSeverity.Recommended,
+            hasWorkflow,
             found.Length > 0 ? found : "unknown",
-            missing.Length == 0
+            hasWorkflow
                 ? null
-                : $"gh auth refresh -h github.com -s {string.Join(",", missing)}");
+                : "gh auth refresh -h github.com -s workflow   " +
+                  "(só necessário se um agente for alterar .github/workflows; dependendo da credencial, o push funciona sem ele)");
     }
 
     private async Task<PrerequisiteResult> CheckRepositoryAccessAsync(CancellationToken cancellationToken)
