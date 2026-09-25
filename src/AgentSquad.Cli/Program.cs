@@ -7,6 +7,7 @@ using AgentSquad.Cli.Console;
 using AgentSquad.Core.Abstractions;
 using AgentSquad.Core.Events;
 using AgentSquad.Core.Implementation;
+using AgentSquad.Core.Runs;
 using AgentSquad.Tools.Prerequisites;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -177,16 +178,26 @@ internal static class Program
 
         var runRequest = new SquadRunRequest(request, transcript?.FullName, unattended, planOnly);
 
-        // Start the run, then attach the renderer. The event bus replays everything a late
-        // subscriber missed, so nothing is lost in the gap between the two.
-        Task<SquadRunResult> runTask = orchestrator.RunAsync(runRequest, cancellationToken);
+        // The renderer has to be attached while the run is happening, not after it, or the
+        // console shows nothing for twenty minutes and then dumps the whole history at once.
+        // The orchestrator hands back the run id the moment it is assigned; the event bus
+        // replays anything published in the gap, so nothing is lost either way.
+        var started = new TaskCompletionSource<RunId>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await Task.Yield();
+        Task<SquadRunResult> runTask = orchestrator.RunAsync(
+            runRequest,
+            runId => started.TrySetResult(runId),
+            cancellationToken);
+
+        RunId activeRun = await started.Task;
+        Task renderTask = renderer.FollowAsync(stream, activeRun, cancellationToken);
 
         SquadRunResult result = await runTask;
 
-        using var renderCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await renderer.FollowAsync(stream, result.RunId, renderCancellation.Token);
+        // The bus completes the stream when the run ends, so the renderer finishes on its
+        // own; the timeout is only a guard against a stream that never closes.
+        await renderTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
+                        .ContinueWith(_ => { }, TaskScheduler.Default);
 
         RenderSummary(console, result);
 

@@ -73,14 +73,24 @@ public sealed partial class SquadOrchestrator(
     /// Runs the factory end to end.
     /// </summary>
     /// <param name="request">What to build.</param>
+    /// <param name="onStarted">
+    /// Invoked with the run identifier as soon as it is assigned, before any work begins.
+    /// A live front end needs this: without it there is no way to subscribe to the event
+    /// stream until the run has already finished, which turns a live console into a dump.
+    /// </param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <returns>Everything the run produced.</returns>
-    public async Task<SquadRunResult> RunAsync(SquadRunRequest request, CancellationToken cancellationToken)
+    public async Task<SquadRunResult> RunAsync(
+        SquadRunRequest request,
+        Action<RunId>? onStarted,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         var runId = RunId.New(_timeProvider);
         IRunEventPublisher events = _eventBus.PublisherFor(runId);
+
+        onStarted?.Invoke(runId);
         var stopwatch = Stopwatch.StartNew();
 
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -168,6 +178,15 @@ public sealed partial class SquadOrchestrator(
             _eventBus.Complete(runId);
         }
     }
+
+    /// <summary>
+    /// Runs the factory end to end.
+    /// </summary>
+    /// <param name="request">What to build.</param>
+    /// <param name="cancellationToken">Cancels the run.</param>
+    /// <returns>Everything the run produced.</returns>
+    public Task<SquadRunResult> RunAsync(SquadRunRequest request, CancellationToken cancellationToken) =>
+        RunAsync(request, onStarted: null, cancellationToken);
 
     // =====================================================================================
     // Intake
