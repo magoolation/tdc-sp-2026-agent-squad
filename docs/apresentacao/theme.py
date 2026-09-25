@@ -11,6 +11,8 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
+import a11y
+
 # --- palette ---------------------------------------------------------------
 
 BG = RGBColor(0x0D, 0x11, 0x17)
@@ -162,6 +164,10 @@ def heading(slide, title, kicker=None, color=TEXT):
 
     frame = textbox(slide, MARGIN, top, CONTENT_W, Inches(0.8))
     write(frame, title, size=34, color=color, bold=True, space_after=0, first=True)
+
+    # Vira o placeholder de título de verdade no finalize. Sem isso o slide não tem nome
+    # na navegação nem no leitor de tela — só "Slide 12".
+    a11y.mark_as_title(slide.shapes[-1])
 
     rule(slide, top + Inches(0.78), color=BORDER)
     return top + Inches(1.05)

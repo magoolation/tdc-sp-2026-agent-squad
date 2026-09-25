@@ -10,6 +10,8 @@ from pptx.util import Inches, Pt
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import a11y  # noqa: E402
+
 from theme import (  # noqa: E402
     ACCENT, ACCENT_DEEP, BG, BG_RAISED, BG_SUNKEN, BORDER, CONTENT_W, DANGER, DIM, FONT,
     H, MARGIN, MONO, MUTED, SUCCESS, TEXT, VIOLET, W, WARNING, WHITE,
@@ -38,6 +40,7 @@ def slide_title():
     f = textbox(s, Inches(1.2), Inches(2.4), Inches(11.2), Inches(1.9))
     write(f, "Agent Squad", size=66, color=WHITE, bold=True, space_after=2, first=True)
     write(f, "Uma fábrica de software autônoma", size=32, color=TEXT, space_after=0)
+    a11y.mark_as_title(s.shapes[-1])
 
     f = textbox(s, Inches(1.2), Inches(4.45), Inches(11), Inches(0.6))
     write(
@@ -470,6 +473,7 @@ def slide_demo(number, title, subtitle, commands, talking, duration):
 
     f = textbox(s, Inches(1.15), Inches(1.25), Inches(11.2), Inches(1.2))
     write(f, title, size=42, color=WHITE, bold=True, space_after=6, first=True)
+    a11y.mark_as_title(s.shapes[-1])
     write(f, subtitle, size=20, color=MUTED, space_after=0)
 
     code_panel(s, Inches(1.15), Inches(3.0), Inches(11.0), commands, size=15)
@@ -789,6 +793,7 @@ def slide_findings_intro():
 
     f = textbox(s, Inches(1.15), Inches(2.4), Inches(11.2), Inches(1.6))
     write(f, "Oito coisas que quebraram", size=54, color=WHITE, bold=True, space_after=8, first=True)
+    a11y.mark_as_title(s.shapes[-1])
     write(f, "e o que cada uma ensinou", size=30, color=MUTED, space_after=0)
 
     f = textbox(s, Inches(1.15), Inches(4.6), Inches(11), Inches(1.2))
@@ -958,6 +963,7 @@ def slide_takeaway():
     f = textbox(s, Inches(1.15), Inches(2.0), Inches(11.2), Inches(1.6))
     write(f, lines[0][0], size=40, color=lines[0][1], bold=True, space_after=10, first=True)
     write(f, lines[1][0], size=26, color=lines[1][1], space_after=0)
+    a11y.mark_as_title(s.shapes[-1])
 
     rule(s, Inches(4.0), color=BORDER, left=Inches(1.15), width=Inches(11.0))
 
@@ -987,6 +993,7 @@ def slide_questions():
 
     f = textbox(s, Inches(1.15), Inches(1.85), Inches(11.2), Inches(1.5))
     write(f, "Perguntas", size=64, color=WHITE, bold=True, space_after=8, first=True)
+    a11y.mark_as_title(s.shapes[-1])
     write(f, "e depois um café, se você quiser continuar a conversa", size=24, color=MUTED, space_after=0)
 
     rule(s, Inches(4.15), color=BORDER, left=Inches(1.15), width=Inches(11.0))
@@ -1172,7 +1179,31 @@ for index, slide in enumerate(prs.slides, start=1):
     if slide not in plain:
         footer(slide, index, total)
 
+# --- acessibilidade --------------------------------------------------------
+# Os slides cujo sentido está no arranjo, não nas peças. Quem lê com leitor de tela
+# recebe uma forma de cada vez, e "Onda 2, 2 agentes" isolado não diz que existe um
+# fluxo. A descrição vai no primeiro objeto lido de cada um deles.
+COMPOSITIONS = {
+    6: "Diagrama do pipeline em nove etapas, da esquerda para a direita, com dois portões "
+       "humanos: intake, requisitos, plano, APROVAÇÃO HUMANA, issues, agentes em paralelo, "
+       "gate, pull request por item, e pull request de entrega, onde acontece o merge humano.",
+    9: "Comparação lado a lado: à esquerda, o que o modelo afirma ter feito; à direita, o que "
+       "o programa verificou. A autoridade fica com a verificação.",
+    10: "Comparação lado a lado: à esquerda, dois agentes declarando o mesmo arquivo na mesma "
+        "onda, que é o que quebra o paralelismo; à direita, a mesma entrega com os arquivos "
+        "separados por item.",
+    17: "Comparação lado a lado dos dois revisores de plano: o validador determinístico, que "
+        "bloqueia, e o agente crítico, que opina. Autoridades diferentes de propósito.",
+    19: "Fluxo do que acontece quando o gate reprova, em cinco passos numerados, do diagnóstico "
+        "voltando ao agente até o pull request em draft marcado needs-human.",
+}
+
+untitled = a11y.finalize(prs, COMPOSITIONS)
+
+if untitled:
+    raise SystemExit(f"slides sem título acessível: {untitled}")
+
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "Agent-Squad-TDC-SP-2026.pptx")
 out.parent.mkdir(parents=True, exist_ok=True)
 prs.save(out)
-print(f"ok: {out}  ({total} slides)")
+print(f"ok: {out}  ({total} slides, todos com título acessível)")

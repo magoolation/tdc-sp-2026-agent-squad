@@ -42,6 +42,16 @@ normal.font.color.rgb = INK
 normal.paragraph_format.space_after = Pt(7)
 normal.paragraph_format.line_spacing = 1.22
 
+# Idioma do documento. Sem isto o leitor de tela lê português com fonética de inglês, o que
+# é a diferença entre um documento utilizável e um que dá dor de cabeça em dez minutos.
+_lang = normal.element.get_or_add_rPr().makeelement(qn("w:lang"), {})
+_lang.set(qn("w:val"), "pt-BR")
+normal.element.get_or_add_rPr().append(_lang)
+
+doc.core_properties.title = "Roteiro de apresentação — Agent Squad — TDC São Paulo 2026"
+doc.core_properties.author = "Alexandre Costa"
+doc.core_properties.language = "pt-BR"
+
 
 def shade(paragraph, color):
     pPr = paragraph._p.get_or_add_pPr()
@@ -64,7 +74,10 @@ def border_left(paragraph, color):
 
 
 def h1(text, color=BLUE):
-    p = doc.add_paragraph()
+    # Estilo "Heading 1" de verdade, não negrito grande: é o que alimenta o painel de
+    # navegação do Word e o atalho de pular por títulos do leitor de tela. A aparência
+    # continua a mesma porque a formatação vai no run, que vence o estilo.
+    p = doc.add_paragraph(style="Heading 1")
     p.paragraph_format.space_before = Pt(22)
     p.paragraph_format.space_after = Pt(8)
     p.paragraph_format.keep_with_next = True
@@ -76,7 +89,7 @@ def h1(text, color=BLUE):
 
 
 def h2(text, color=INK):
-    p = doc.add_paragraph()
+    p = doc.add_paragraph(style="Heading 2")
     p.paragraph_format.space_before = Pt(15)
     p.paragraph_format.space_after = Pt(5)
     p.paragraph_format.keep_with_next = True
@@ -178,6 +191,12 @@ def table(headers, rows, widths=None):
     t = doc.add_table(rows=1, cols=len(headers))
     t.style = "Table Grid"
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    # Marca a primeira linha como cabeçalho de verdade: o leitor de tela passa a anunciar
+    # "Coluna: Min" antes de cada célula em vez de despejar números soltos, e a linha se
+    # repete quando a tabela quebra de página.
+    tr_pr = t.rows[0]._tr.get_or_add_trPr()
+    tr_pr.append(tr_pr.makeelement(qn("w:tblHeader"), {}))
 
     for index, header in enumerate(headers):
         cell = t.rows[0].cells[index]
