@@ -216,6 +216,14 @@ public sealed partial class SquadOrchestrator(
                 cancellationToken: cancellationToken);
         }
 
+        // Before reading anything off disk, put the clone back on the base branch. It is
+        // reused between runs and the last one left it on its own integration branch, so the
+        // inventory below would otherwise describe the previous run's output — and the very
+        // first decision of the pipeline, greenfield or brownfield, would be made from a
+        // branch nobody has merged. Observed in a real run: a repository whose `main` holds
+        // two files was reported as an existing .NET 8 catalog API.
+        await _gitClient.CheckoutBaseAsync(localPath, _gitHub.BaseBranch, cancellationToken);
+
         string defaultBranch = await _gitClient.GetDefaultBranchAsync(localPath, cancellationToken);
         string inventory = RepositoryInventory.Describe(localPath);
 

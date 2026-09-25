@@ -125,6 +125,21 @@ public interface IGitClient
     Task<bool> EnsureBaseBranchAsync(string repositoryPath, string branch, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Points the clone's own checkout at the tip of the base branch on the remote.
+    /// </summary>
+    /// <remarks>
+    /// The clone is reused across runs, so it is left on whatever branch the previous run
+    /// last touched. Anything that reads the working tree — the intake inventory above all —
+    /// would then describe the previous run's output instead of the branch this delivery
+    /// targets, and decide greenfield or brownfield from stale local state.
+    /// </remarks>
+    /// <param name="repositoryPath">The clone.</param>
+    /// <param name="branch">The base branch.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the checkout matches the remote.</returns>
+    Task CheckoutBaseAsync(string repositoryPath, string branch, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Creates the run's integration branch from the base branch and pushes it.
     /// </summary>
     /// <remarks>

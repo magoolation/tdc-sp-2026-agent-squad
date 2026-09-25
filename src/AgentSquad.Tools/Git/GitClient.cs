@@ -189,6 +189,20 @@ public sealed partial class GitClient(
     }
 
     /// <inheritdoc />
+    public async Task CheckoutBaseAsync(string repositoryPath, string branch, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(branch);
+
+        LogCheckingOutBase(branch);
+
+        // -B and an explicit start point, rather than a plain checkout: the local branch may
+        // not exist yet, and when it does it may be an old run's tip. --force discards
+        // anything a previous run left dirty in the clone's working tree.
+        await RunAsync(repositoryPath, cancellationToken, "checkout", "--force", "-B", branch, $"origin/{branch}");
+        await RunAsync(repositoryPath, cancellationToken, "clean", "-fdx", "--exclude=.squad");
+    }
+
+    /// <inheritdoc />
     public async Task CreateIntegrationBranchAsync(
         string repositoryPath,
         string integrationBranch,
@@ -335,6 +349,9 @@ public sealed partial class GitClient(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Creating integration branch {Branch} from origin/{BaseBranch}")]
     private partial void LogCreatingIntegrationBranch(string branch, string baseBranch);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Checked the clone out at origin/{Branch}")]
+    private partial void LogCheckingOutBase(string branch);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Integrated {WorkBranch} into {IntegrationBranch}")]
     private partial void LogIntegrated(string workBranch, string integrationBranch);
