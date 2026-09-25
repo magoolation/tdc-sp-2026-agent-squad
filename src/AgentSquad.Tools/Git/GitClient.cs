@@ -188,6 +188,59 @@ public sealed partial class GitClient(
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task CreateIntegrationBranchAsync(
+        string repositoryPath,
+        string integrationBranch,
+        string baseBranch,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(integrationBranch);
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
+
+        LogCreatingIntegrationBranch(integrationBranch, baseBranch);
+
+        // The main clone's own checkout is only ever used for branch bookkeeping; the agents
+        // work exclusively in worktrees, so moving HEAD here is safe.
+        await RunAsync(repositoryPath, cancellationToken, "checkout", "-B", integrationBranch, $"origin/{baseBranch}");
+        await RunAsync(repositoryPath, cancellationToken, "push", "--force-with-lease", "--set-upstream", "origin", integrationBranch);
+        await FetchAsync(repositoryPath, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IntegrateAsync(
+        string repositoryPath,
+        string integrationBranch,
+        string workBranch,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(integrationBranch);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workBranch);
+
+        await RunAsync(repositoryPath, cancellationToken, "checkout", integrationBranch);
+
+        ProcessResult merge = await RunRawAsync(
+            repositoryPath, cancellationToken,
+            "merge", "--no-edit", workBranch);
+
+        if (!merge.Succeeded)
+        {
+            // A conflict here means the plan's file-conflict rule was violated in a way the
+            // static check could not see — two items that touched the same behaviour through
+            // different files. Abort cleanly and let the run continue; the pull request is
+            // already open and a human will see the conflict on it.
+            await RunRawAsync(repositoryPath, cancellationToken, "merge", "--abort");
+            LogIntegrationConflict(workBranch, integrationBranch);
+
+            return false;
+        }
+
+        await RunAsync(repositoryPath, cancellationToken, "push", "origin", integrationBranch);
+        LogIntegrated(workBranch, integrationBranch);
+
+        return true;
+    }
+
     private const string SeedCommitMessage = """
         chore: initial commit
 
@@ -279,6 +332,17 @@ public sealed partial class GitClient(
         Level = LogLevel.Information,
         Message = "{RepositoryPath} has no commits; creating the initial commit on {Branch} so agents have a base to branch from")]
     private partial void LogSeedingRepository(string repositoryPath, string branch);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating integration branch {Branch} from origin/{BaseBranch}")]
+    private partial void LogCreatingIntegrationBranch(string branch, string baseBranch);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Integrated {WorkBranch} into {IntegrationBranch}")]
+    private partial void LogIntegrated(string workBranch, string integrationBranch);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "{WorkBranch} conflicts with {IntegrationBranch}; the merge was aborted and the pull request is left for a human")]
+    private partial void LogIntegrationConflict(string workBranch, string integrationBranch);
 }
 
 /// <summary>

@@ -123,4 +123,38 @@ public interface IGitClient
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns><see langword="true"/> if an initial commit was created.</returns>
     Task<bool> EnsureBaseBranchAsync(string repositoryPath, string branch, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Creates the run's integration branch from the base branch and pushes it.
+    /// </summary>
+    /// <remarks>
+    /// Waves build on each other, but the pull requests they produce are merged by a human
+    /// and stay open. Branching every wave from the base branch would therefore hide wave 1's
+    /// work from wave 2, so each agent would rebuild the foundation and the resulting pull
+    /// requests would all conflict. The integration branch is what the waves accumulate onto.
+    /// </remarks>
+    /// <param name="repositoryPath">Local repository path.</param>
+    /// <param name="integrationBranch">The integration branch name.</param>
+    /// <param name="baseBranch">The branch to create it from.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the branch exists on the remote.</returns>
+    Task CreateIntegrationBranchAsync(
+        string repositoryPath,
+        string integrationBranch,
+        string baseBranch,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Fast-forwards the integration branch onto a completed work branch and pushes it.
+    /// </summary>
+    /// <param name="repositoryPath">Local repository path.</param>
+    /// <param name="integrationBranch">The integration branch.</param>
+    /// <param name="workBranch">The branch to integrate.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><see langword="true"/> when the merge succeeded.</returns>
+    Task<bool> IntegrateAsync(
+        string repositoryPath,
+        string integrationBranch,
+        string workBranch,
+        CancellationToken cancellationToken);
 }

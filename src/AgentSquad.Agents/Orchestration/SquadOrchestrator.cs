@@ -740,6 +740,25 @@ public sealed partial class SquadOrchestrator(
         var allPullRequests = new List<PullRequestRef>();
         IReadOnlyList<IReadOnlyList<WorkItem>> waves = plan.Waves();
 
+        // Waves build on each other, but the pull requests they produce are merged by a
+        // human and stay open. Branching every wave from the base branch would therefore
+        // hide wave 1's work from wave 2: each agent would rebuild the foundation, and the
+        // pull requests would all conflict with one another. Observed in a real run before
+        // this existed — five pull requests, each containing the whole solution.
+        //
+        // The integration branch is what the waves accumulate onto and what their pull
+        // requests target. A human reviews each change on its own, then merges the
+        // integration branch into the base branch once.
+        string integrationBranch = $"agent/run-{runId.Value}";
+
+        await _gitClient.CreateIntegrationBranchAsync(
+            _worktrees.RepositoryPath, integrationBranch, _gitHub.BaseBranch, cancellationToken);
+
+        await events.PublishAsync(RunPhase.Implementation, RunEventLevel.Info, "orchestrator",
+            $"Branch de integração `{integrationBranch}` criado a partir de `{_gitHub.BaseBranch}`. " +
+            "Cada onda ramifica dele, e os pull requests miram nele.",
+            cancellationToken: cancellationToken);
+
         for (int index = 0; index < waves.Count; index++)
         {
             IReadOnlyList<WorkItem> wave = waves[index];
@@ -765,7 +784,9 @@ public sealed partial class SquadOrchestrator(
                         return;
                     }
 
-                    (ImplementationOutcome Outcome, PullRequestRef? PullRequest) result = await ImplementOneAsync(item, issue, plan, runId, events, token);
+                    (ImplementationOutcome Outcome, PullRequestRef? PullRequest) result =
+                        await ImplementOneAsync(item, issue, plan, runId, integrationBranch, events, token);
+
                     waveOutcomes.Add(result);
                 });
 
@@ -784,9 +805,59 @@ public sealed partial class SquadOrchestrator(
             await events.PublishAsync(RunPhase.Implementation, RunEventLevel.Milestone, "orchestrator",
                 $"Onda {waveNumber} concluída: {succeeded}/{wave.Count} aprovada(s) no gate.",
                 cancellationToken: cancellationToken);
+
+            // Fold this wave into the integration branch, sequentially, so the next wave
+            // starts from everything that came before it.
+            if (index < waves.Count - 1)
+            {
+                await IntegrateWaveAsync(waveOutcomes, integrationBranch, events, cancellationToken);
+            }
         }
 
         return (allOutcomes, allPullRequests);
+    }
+
+    /// <summary>
+    /// Merges a completed wave's branches into the integration branch, one at a time.
+    /// </summary>
+    /// <remarks>
+    /// Sequential on purpose: these merges all write to the same branch, and doing them
+    /// concurrently would contend on the shared ref. A conflict here means the plan's
+    /// file-conflict rule was satisfied on paper but two items collided in substance, which
+    /// is exactly the kind of thing the plan critic is asked to look for.
+    /// </remarks>
+    /// <param name="waveOutcomes">What the wave produced.</param>
+    /// <param name="integrationBranch">The branch to accumulate onto.</param>
+    /// <param name="events">Event publisher.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the wave has been integrated.</returns>
+    private async Task IntegrateWaveAsync(
+        IEnumerable<(ImplementationOutcome Outcome, PullRequestRef? PullRequest)> waveOutcomes,
+        string integrationBranch,
+        IRunEventPublisher events,
+        CancellationToken cancellationToken)
+    {
+        foreach ((ImplementationOutcome outcome, PullRequestRef? pullRequest) in waveOutcomes)
+        {
+            if (pullRequest is null || !outcome.Validation.Passed)
+            {
+                continue;
+            }
+
+            bool merged = await _gitClient.IntegrateAsync(
+                _worktrees.RepositoryPath, integrationBranch, outcome.BranchName, cancellationToken);
+
+            await events.PublishAsync(
+                RunPhase.Delivery,
+                merged ? RunEventLevel.Info : RunEventLevel.Warning,
+                "orchestrator",
+                merged
+                    ? $"`{outcome.BranchName}` integrado em `{integrationBranch}`; a próxima onda parte daqui."
+                    : $"`{outcome.BranchName}` conflita com `{integrationBranch}`. O pull request fica aberto para " +
+                      "um humano resolver, e a próxima onda segue sem esta mudança.",
+                outcome.IssueNumber,
+                cancellationToken: cancellationToken);
+        }
     }
 
     private async Task<(ImplementationOutcome Outcome, PullRequestRef? PullRequest)> ImplementOneAsync(
@@ -794,12 +865,16 @@ public sealed partial class SquadOrchestrator(
         TrackedIssue issue,
         DeliveryPlan plan,
         RunId runId,
+        string integrationBranch,
         IRunEventPublisher events,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         string branch = item.BranchName(issue.Number);
-        string baseRef = $"origin/{_gitHub.BaseBranch}";
+
+        // Branch from, diff against and target the integration branch — never the base
+        // branch. Using the base branch here is what made every wave rebuild the foundation.
+        string baseRef = $"origin/{integrationBranch}";
 
         AgentWorktree worktree = await _worktrees.CreateAsync(issue.Number, branch, baseRef, cancellationToken);
 
@@ -883,7 +958,7 @@ public sealed partial class SquadOrchestrator(
             issue.Number, item.Key, branch, worktree.Path, attempt.SessionId, attempt.Model,
             attemptNumber, attempt.Report, validation, diff, stopwatch.Elapsed, transcriptPath);
 
-        PullRequestRef? pullRequest = await DeliverAsync(outcome, item, review, runId, worktree, events, cancellationToken);
+        PullRequestRef? pullRequest = await DeliverAsync(outcome, item, review, runId, integrationBranch, worktree, events, cancellationToken);
 
         return (outcome, pullRequest);
     }
@@ -947,6 +1022,7 @@ public sealed partial class SquadOrchestrator(
         WorkItem item,
         ReviewResult? review,
         RunId runId,
+        string integrationBranch,
         AgentWorktree worktree,
         IRunEventPublisher events,
         CancellationToken cancellationToken)
@@ -987,7 +1063,9 @@ public sealed partial class SquadOrchestrator(
                 Title: $"{ConventionalPrefix(item.Area)}: {item.Title}",
                 Body: body,
                 HeadBranch: outcome.BranchName,
-                BaseBranch: _gitHub.BaseBranch,
+                // The integration branch, not the base branch: each pull request then shows only
+                // its own change, and one human merge of the integration branch delivers the lot.
+                BaseBranch: integrationBranch,
                 IssueNumber: outcome.IssueNumber,
                 Labels: labels,
 
@@ -1109,4 +1187,5 @@ public sealed partial class SquadOrchestrator(
     [LoggerMessage(Level = LogLevel.Error, Message = "Run {RunId} failed")]
     private partial void LogRunFailed(Exception exception, string runId);
 }
+
 
