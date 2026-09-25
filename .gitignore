@@ -84,3 +84,7 @@ $RECYCLE.BIN/
 
 # Arquivos de lock do Office (aparecem quando o deck está aberto)
 ~$*
+
+# Bytecode dos geradores de apresentação
+__pycache__/
+*.pyc
