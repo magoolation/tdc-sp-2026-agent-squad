@@ -608,8 +608,35 @@ E não existe resource provider `Microsoft.Foundry/*`: o tipo ARM continua sendo
 | `NU5037` em restore | Cache corrompido por scratch dividido | `dotnet nuget locals all --clear` e pin em `NUGET_SCRATCH` |
 | Caminho longo no build do agente | Raiz de trabalho comprida demais | Encurte `Squad:WorkRoot` (`C:\squad`) |
 | Agente reprova no gate repetidamente | Critério de aceite ambíguo | Leia o `AGENT_REPORT`; quase sempre o plano é que estava vago |
+| `Retry failed after 4 tries ... timeout of 0:01:40` | `NetworkTimeout` padrão do SDK é 100 s, e uma chamada de planejamento passa disso | Já corrigido: `Foundry:RequestTimeout` (5 min). Se ainda estourar, aumente — mas lembre que é por tentativa |
+| `An Application Control policy has blocked this file (0x800711C7)` | **Smart App Control** do Windows 11 bloqueia binário local sem assinatura e sem reputação | Veja abaixo |
 
 Stack trace completo: defina `SQUAD_DEBUG=1`.
+
+### Smart App Control bloqueia o que você acabou de compilar
+
+Em Windows 11 com **Smart App Control** ligado, todo assembly produzido por `dotnet build`
+é bloqueado no carregamento: sem assinatura confiável e sem reputação na nuvem, ele não
+passa. O sintoma é uma `FileLoadException` apontando para o seu próprio `.dll`, e atinge o
+CLI, os testes e os agentes por igual.
+
+```powershell
+# Confirme antes de culpar o código:
+(Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" `
+  -Name VerifiedAndReputablePolicyState).VerifiedAndReputablePolicyState   # 1 = bloqueando
+
+Get-WinEvent -LogName "Microsoft-Windows-CodeIntegrity/Operational" -MaxEvents 20 |
+  Where-Object Id -in 3077,3033
+```
+
+A única correção é desligá-lo: **Segurança do Windows → Controle de aplicativos e navegador
+→ Configurações do Controle Inteligente de Aplicativos → Desativado**.
+
+> ⚠️ **Desligar é irreversível.** O Smart App Control só volta a ser ligado reinstalando o
+> Windows. Assinar com certificado próprio **não** resolve: ele exige reputação, não apenas
+> assinatura. Se a máquina for corporativa e gerenciada, essa decisão provavelmente não é
+> sua — trate isso como pré-requisito de ambiente e valide **antes** de depender da
+> ferramenta, não na véspera.
 
 ---
 

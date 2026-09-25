@@ -78,6 +78,25 @@ public sealed class FoundryOptions
     public double? Temperature { get; set; }
 
     /// <summary>
+    /// Gets or sets how long a single call to a model may take.
+    /// </summary>
+    /// <remarks>
+    /// The SDK default is 100 seconds, which is fine for chat and wrong for this workload:
+    /// the architect is a reasoning model producing a whole delivery plan as structured
+    /// output, and it went past 100 seconds on a 22-requirement plan. The retry policy then
+    /// spent four attempts hitting the same wall and failed the run after nine minutes, with
+    /// a message about network timeouts that says nothing about the real cause.
+    /// <para>
+    /// Five minutes, not more: this is a per-attempt budget and the retry policy makes four
+    /// attempts, so the value also decides how long a genuinely stuck call can hold the run
+    /// silent. Five gives three times the headroom over the call that failed, and still
+    /// bounds the worst case at twenty minutes.
+    /// </para>
+    /// </remarks>
+    [Range(typeof(TimeSpan), "00:00:30", "00:30:00")]
+    public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Gets or sets a value indicating whether prompts and completions are captured in traces.
     /// </summary>
     /// <remarks>

@@ -174,9 +174,18 @@ public sealed partial class FoundryAgentFactory : IDisposable
 
         LogConnecting(_options.ProjectEndpoint);
 
+        // NetworkTimeout applies per attempt, and the SDK default of 100 seconds is shorter
+        // than a single architect call on a reasoning model. Left at the default, the retry
+        // policy burns four attempts against the same wall and reports a network timeout,
+        // which reads like an infrastructure problem and is not one.
+        var clientOptions = new AIProjectClientOptions
+        {
+            NetworkTimeout = _options.RequestTimeout,
+        };
+
         // The parameter is tokenProvider, typed AuthenticationTokenProvider.
         // TokenCredential derives from it, so DefaultAzureCredential binds directly.
-        return new AIProjectClient(new Uri(_options.ProjectEndpoint), new DefaultAzureCredential());
+        return new AIProjectClient(new Uri(_options.ProjectEndpoint), new DefaultAzureCredential(), clientOptions);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connecting to Microsoft Foundry at {Endpoint} with Entra ID")]
