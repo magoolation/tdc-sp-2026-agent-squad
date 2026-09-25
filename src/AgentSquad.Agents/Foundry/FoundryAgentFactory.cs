@@ -137,14 +137,23 @@ public sealed partial class FoundryAgentFactory : IDisposable
     /// Builds the chat options used for every structured-output call.
     /// </summary>
     /// <remarks>
-    /// Low temperature on purpose: these agents return schema-bound JSON that the rest of
-    /// the pipeline consumes, and variability there is a defect rather than creativity (AI-008).
+    /// Temperature is sent only when it is explicitly configured. Reasoning models reject
+    /// the parameter with an HTTP 400, so sending it unconditionally would couple the
+    /// sampling setting to the model choice and break the pipeline the moment someone
+    /// swaps in a stronger deployment. See <see cref="FoundryOptions.Temperature"/>.
     /// </remarks>
     /// <returns>Chat options.</returns>
-    public ChatOptions StructuredOptions() => new()
+    public ChatOptions StructuredOptions()
     {
-        Temperature = (float)_options.Temperature,
-    };
+        var options = new ChatOptions();
+
+        if (_options.Temperature is { } temperature)
+        {
+            options.Temperature = (float)temperature;
+        }
+
+        return options;
+    }
 
     /// <inheritdoc />
     public void Dispose()

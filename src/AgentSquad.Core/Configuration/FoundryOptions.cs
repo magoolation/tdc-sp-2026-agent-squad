@@ -57,14 +57,25 @@ public sealed class FoundryOptions
     public string ReasoningEffort { get; set; } = "medium";
 
     /// <summary>
-    /// Gets or sets the sampling temperature for structured work.
+    /// Gets or sets the sampling temperature, or <see langword="null"/> to let the model decide.
     /// </summary>
     /// <remarks>
-    /// Low by default: the planning and review agents return schema-bound JSON that the
-    /// rest of the pipeline depends on, and non-determinism there is a defect (AI-008).
+    /// <para>
+    /// <b>Null by default, and that is deliberate.</b> Reasoning models reject the parameter
+    /// outright — <c>gpt-5.5</c> answers
+    /// <c>HTTP 400: Unsupported parameter: 'temperature' is not supported with this model</c>,
+    /// while <c>gpt-5.4-mini</c> accepts it. Sending a fixed temperature therefore makes the
+    /// model choice and the sampling setting silently coupled, and swapping in a stronger
+    /// model breaks the pipeline at the first call.
+    /// </para>
+    /// <para>
+    /// Determinism does not depend on this anyway: the structured-output schema is what
+    /// constrains these agents, and the deterministic gate is what decides pass or fail
+    /// (AI-008). Set it only when you know the deployment supports it.
+    /// </para>
     /// </remarks>
     [Range(0.0, 2.0)]
-    public double Temperature { get; set; } = 0.2;
+    public double? Temperature { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether prompts and completions are captured in traces.

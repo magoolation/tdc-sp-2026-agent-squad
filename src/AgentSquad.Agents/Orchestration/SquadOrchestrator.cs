@@ -206,6 +206,16 @@ public sealed partial class SquadOrchestrator(
         _worktrees.RepositoryPath = localPath;
         await _worktrees.PrepareRepositoryAsync(cancellationToken);
 
+        // A brand-new GitHub repository has no commits, so origin/<branch> does not resolve
+        // and every worktree creation would fail. That is the normal starting point for a
+        // greenfield delivery, so seed it rather than refuse.
+        if (await _gitClient.EnsureBaseBranchAsync(localPath, _gitHub.BaseBranch, cancellationToken))
+        {
+            await events.PublishAsync(RunPhase.Intake, RunEventLevel.Info, "orchestrator",
+                $"O repositório estava vazio; commit inicial criado em `{_gitHub.BaseBranch}` para os agentes ramificarem.",
+                cancellationToken: cancellationToken);
+        }
+
         string defaultBranch = await _gitClient.GetDefaultBranchAsync(localPath, cancellationToken);
         string inventory = RepositoryInventory.Describe(localPath);
 
@@ -489,16 +499,41 @@ public sealed partial class SquadOrchestrator(
             await events.PublishAsync(RunPhase.Planning, RunEventLevel.Info, "plan-critic",
                 critique.Summary, cancellationToken: cancellationToken);
 
-            bool acceptable = blocking.Count == 0 && critique.Approved;
+            // The deterministic validator is the gate; the critic is advice (AI-008).
+            //
+            // A clean validator plus one round of critique is enough to proceed. Requiring
+            // the critic's approval outright inverts that hierarchy and, observed over
+            // several runs, means never proceeding: a reviewing model can always find
+            // something else to say about a plan. Its outstanding points are published
+            // below, so the human approving the plan sees them and decides.
+            bool acceptable = blocking.Count == 0 && (critique.Approved || revision >= 1);
 
             if (acceptable || revision == _options.MaxPlanRevisions)
             {
                 if (!acceptable)
                 {
+                    // Say which gate is unhappy. "0 blocking problems" as a warning is
+                    // nonsense, and the two cases call for different judgement from the
+                    // human: a validator error is a fact, a critic objection is an opinion.
+                    string reason = blocking.Count > 0
+                        ? $"o validador determinístico ainda aponta {blocking.Count} problema(s) bloqueante(s)"
+                        : "o revisor de plano não deu aprovação, embora o validador determinístico esteja limpo";
+
                     await events.PublishAsync(RunPhase.Planning, RunEventLevel.Warning, "orchestrator",
-                        $"O plano ainda tem {blocking.Count} problema(s) bloqueante(s) após {revision} revisão(ões). " +
-                        "Ele vai para aprovação humana assim mesmo, com os problemas visíveis.",
+                        $"Após {revision} revisão(ões), {reason}. O plano vai para aprovação humana assim mesmo, " +
+                        "com os apontamentos visíveis.",
                         cancellationToken: cancellationToken);
+                }
+
+                // Whatever the critic still objects to goes to the human, whether or not it
+                // approved. An objection that nobody reads is an objection that was never made.
+                if (!critique.Approved)
+                {
+                    foreach (string problem in critique.Problems.Concat(critique.MissingWork))
+                    {
+                        await events.PublishAsync(RunPhase.Planning, RunEventLevel.Warning, "plan-critic",
+                            problem, cancellationToken: cancellationToken);
+                    }
                 }
 
                 await events.PublishAsync(RunPhase.Planning, RunEventLevel.Milestone, "architect",
@@ -511,7 +546,10 @@ public sealed partial class SquadOrchestrator(
             await events.PublishAsync(RunPhase.Planning, RunEventLevel.Info, "architect",
                 $"Revisando o plano (rodada {revision + 1})…", cancellationToken: cancellationToken);
 
-            plan = await ReviseAsync(blocking, critique, session, cancellationToken);
+            // Every issue, not only the blocking ones. An uncovered requirement is a
+            // warning, and in an earlier run the architect revised three times without ever
+            // fixing one — because nobody had told it the warning existed.
+            plan = await ReviseAsync(planIssues, critique, session, cancellationToken);
         }
 
         return plan;
@@ -550,7 +588,7 @@ public sealed partial class SquadOrchestrator(
     }
 
     private async Task<DeliveryPlan> ReviseAsync(
-        IReadOnlyList<PlanIssue> blocking,
+        IReadOnlyList<PlanIssue> planIssues,
         PlanCritique critique,
         AgentSession session,
         CancellationToken cancellationToken)
@@ -558,13 +596,15 @@ public sealed partial class SquadOrchestrator(
         var prompt = new StringBuilder();
         prompt.AppendLine("Seu plano foi reprovado. Corrija-o e devolva o plano completo revisado.").AppendLine();
 
-        if (blocking.Count > 0)
+        if (planIssues.Count > 0)
         {
-            prompt.AppendLine("### Problemas bloqueantes encontrados pelo validador determinístico").AppendLine();
+            prompt.AppendLine("### Encontrado pelo validador determinístico").AppendLine();
 
-            foreach (PlanIssue issue in blocking)
+            foreach (PlanIssue issue in planIssues.OrderByDescending(i => i.Severity))
             {
-                prompt.Append("- **").Append(issue.Code).Append("** ").Append(issue.Message);
+                string label = issue.Severity == PlanIssueSeverity.Error ? "BLOQUEANTE" : "aviso";
+
+                prompt.Append("- [").Append(label).Append("] **").Append(issue.Code).Append("** ").Append(issue.Message);
 
                 if (issue.ItemKeys.Count > 0)
                 {
@@ -575,6 +615,8 @@ public sealed partial class SquadOrchestrator(
             }
 
             prompt.AppendLine();
+            prompt.AppendLine("Corrija **todos**, inclusive os avisos. Um requisito sem nenhum work item que o");
+            prompt.AppendLine("entregue é trabalho que simplesmente não vai acontecer.").AppendLine();
             prompt.AppendLine("Lembre-se: dois itens na mesma onda nunca podem declarar o mesmo arquivo. Sequencie,");
             prompt.AppendLine("extraia uma costura antes, ou funda os itens.").AppendLine();
         }

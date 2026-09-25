@@ -143,6 +143,104 @@ public sealed partial class GitClient(
         return "main";
     }
 
+    /// <inheritdoc />
+    public async Task<bool> EnsureBaseBranchAsync(
+        string repositoryPath,
+        string branch,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(branch);
+
+        // A remote-tracking ref for the branch means there is something to branch from.
+        ProcessResult remote = await RunRawAsync(
+            repositoryPath, cancellationToken,
+            "rev-parse", "--verify", "--quiet", $"refs/remotes/origin/{branch}");
+
+        if (remote.Succeeded)
+        {
+            return false;
+        }
+
+        LogSeedingRepository(repositoryPath, branch);
+
+        // Put something real in the initial commit. An empty commit works for git but
+        // leaves the agents with no README to read and no .gitignore, and the first thing
+        // a coding agent would otherwise do is commit bin/ and obj/.
+        await File.WriteAllTextAsync(
+            Path.Combine(repositoryPath, "README.md"),
+            SeedReadme,
+            cancellationToken);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(repositoryPath, ".gitignore"),
+            SeedGitIgnore,
+            cancellationToken);
+
+        await RunAsync(repositoryPath, cancellationToken, "checkout", "-B", branch);
+        await RunAsync(repositoryPath, cancellationToken, "add", "README.md", ".gitignore");
+        await RunAsync(repositoryPath, cancellationToken, "commit", "--message", SeedCommitMessage);
+        await RunAsync(repositoryPath, cancellationToken, "push", "--set-upstream", "origin", branch);
+
+        // Refresh remote-tracking refs so origin/<branch> resolves for worktree creation.
+        await FetchAsync(repositoryPath, cancellationToken);
+
+        return true;
+    }
+
+    private const string SeedCommitMessage = """
+        chore: initial commit
+
+        Created by Agent Squad so the repository has a base branch for the
+        autonomous agents to branch from.
+        """;
+
+    private const string SeedReadme = """
+        # Projeto
+
+        Repositório inicializado pelo **Agent Squad**.
+
+        O conteúdo abaixo será substituído pela primeira entrega. Cada tarefa vira uma
+        issue, é implementada por um agente autônomo em um `git worktree` isolado, passa
+        por um gate de validação determinístico e chega como um pull request para revisão
+        humana.
+
+        """;
+
+    private const string SeedGitIgnore = """
+        # ---------------------------------------------------------------------------
+        # .NET
+        # ---------------------------------------------------------------------------
+        [Bb]in/
+        [Oo]bj/
+        artifacts/
+        *.user
+        *.binlog
+        [Tt]est[Rr]esults/
+
+        # ---------------------------------------------------------------------------
+        # Secrets — NEVER commit
+        # ---------------------------------------------------------------------------
+        .env
+        .env.*
+        !.env.example
+        appsettings.Local.json
+        secrets.json
+        *.pfx
+        *.pem
+        *.key
+
+        # ---------------------------------------------------------------------------
+        # Tooling
+        # ---------------------------------------------------------------------------
+        .vs/
+        .idea/
+        node_modules/
+        .DS_Store
+        Thumbs.db
+
+        """;
+
     private async Task RunAsync(string workingDirectory, CancellationToken cancellationToken, params string[] arguments)
     {
         ProcessResult result = await RunRawAsync(workingDirectory, cancellationToken, arguments);
@@ -176,6 +274,11 @@ public sealed partial class GitClient(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read the default branch of {RepositoryPath}; assuming 'main'")]
     private partial void LogDefaultBranchFallback(string repositoryPath);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "{RepositoryPath} has no commits; creating the initial commit on {Branch} so agents have a base to branch from")]
+    private partial void LogSeedingRepository(string repositoryPath, string branch);
 }
 
 /// <summary>

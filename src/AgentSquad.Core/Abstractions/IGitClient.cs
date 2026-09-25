@@ -107,4 +107,20 @@ public interface IGitClient
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The default branch name, for example <c>main</c>.</returns>
     Task<string> GetDefaultBranchAsync(string repositoryPath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Ensures the base branch exists on the remote, creating an initial commit if the
+    /// repository has none.
+    /// </summary>
+    /// <remarks>
+    /// A freshly created GitHub repository has zero commits and zero branches, so
+    /// <c>origin/main</c> does not resolve and every worktree creation fails. That is the
+    /// normal starting point for a greenfield delivery, not an edge case, so the factory
+    /// seeds the repository rather than refusing to work with it.
+    /// </remarks>
+    /// <param name="repositoryPath">Local repository path.</param>
+    /// <param name="branch">The base branch name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><see langword="true"/> if an initial commit was created.</returns>
+    Task<bool> EnsureBaseBranchAsync(string repositoryPath, string branch, CancellationToken cancellationToken);
 }
