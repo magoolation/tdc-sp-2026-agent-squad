@@ -3,6 +3,7 @@ using System.Text;
 using AgentSquad.Core.Abstractions;
 using AgentSquad.Core.Configuration;
 using AgentSquad.Core.Implementation;
+using AgentSquad.Tools.Processes;
 using GitHub.Copilot;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
@@ -79,6 +80,8 @@ public sealed partial class CopilotCodingAgent : ICodingAgent
 
         ILogger logger = loggerFactory.CreateLogger<CopilotCodingAgent>();
 
+        string runtime = ResolveRuntimePath(options);
+
         var clientOptions = new CopilotClientOptions
         {
             WorkingDirectory = worktree.Path,
@@ -88,12 +91,14 @@ public sealed partial class CopilotCodingAgent : ICodingAgent
             BaseDirectory = copilotHome,
             UseLoggedInUser = true,
             Logger = logger,
-        };
 
-        if (!string.IsNullOrWhiteSpace(options.RuntimePath))
-        {
-            clientOptions.Connection = RuntimeConnection.ForStdio(options.RuntimePath);
-        }
+            // Always an explicit stdio connection to a real copilot binary, never the SDK's
+            // bundled-runtime path. That path looks for a `copilot-runtime.exe` wrapper
+            // beside a `runtime.node`, and no released CLI ships that layout — the published
+            // packages contain a single `copilot.exe`. Letting the SDK choose fails at the
+            // first call with "Copilot runtime wrapper not found".
+            Connection = RuntimeConnection.ForStdio(runtime),
+        };
 
         var client = new CopilotClient(clientOptions);
         await client.StartAsync(cancellationToken);
@@ -189,6 +194,59 @@ public sealed partial class CopilotCodingAgent : ICodingAgent
         }
     }
 
+    /// <summary>
+    /// Finds the Copilot binary to drive.
+    /// </summary>
+    /// <remarks>
+    /// Configuration first, then the copy the SDK's build targets staged next to this
+    /// assembly, then whatever is on PATH. Resolving rather than requiring configuration
+    /// matters for a demo machine: the factory works out of the box if Copilot is installed
+    /// at all, and says precisely what is missing when it is not.
+    /// </remarks>
+    /// <param name="options">Copilot options.</param>
+    /// <returns>An absolute path to a Copilot executable.</returns>
+    private static string ResolveRuntimePath(CopilotOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.RuntimePath))
+        {
+            return File.Exists(options.RuntimePath)
+                ? options.RuntimePath
+                : throw new FileNotFoundException(
+                    $"Copilot:RuntimePath aponta para '{options.RuntimePath}', que não existe.",
+                    options.RuntimePath);
+        }
+
+        string executable = OperatingSystem.IsWindows() ? "copilot.exe" : "copilot";
+        string? assemblyDirectory = Path.GetDirectoryName(typeof(CopilotCodingAgent).Assembly.Location);
+
+        if (assemblyDirectory is not null)
+        {
+            string rid = OperatingSystem.IsWindows() ? "win-x64"
+                       : OperatingSystem.IsMacOS() ? "osx-x64"
+                       : "linux-x64";
+
+            string staged = Path.Combine(assemblyDirectory, "runtimes", rid, "native", executable);
+
+            if (File.Exists(staged))
+            {
+                return staged;
+            }
+        }
+
+        LaunchPlan onPath = ExecutableResolver.Resolve("copilot");
+
+        if (Path.IsPathRooted(onPath.FileName) && File.Exists(onPath.FileName))
+        {
+            return onPath.FileName;
+        }
+
+        throw new FileNotFoundException(
+            "Nenhum executável do GitHub Copilot foi encontrado. Instale com " +
+            "'npm install -g @github/copilot' ou 'winget install GitHub.Copilot', " +
+            "ou aponte Copilot:RuntimePath para um binário existente.",
+            executable);
+    }
+
     private AIAgent CreateAgent(CodingAssignment assignment)
     {
         var sessionConfig = new SessionConfig
@@ -258,3 +316,4 @@ public sealed partial class CopilotCodingAgent : ICodingAgent
     [LoggerMessage(Level = LogLevel.Warning, Message = "The Copilot runtime did not shut down cleanly")]
     private partial void LogShutdownFailed(Exception exception);
 }
+

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using AgentSquad.Agents.DependencyInjection;
 using AgentSquad.Agents.Foundry;
+using AgentSquad.Agents.Implementation;
 using AgentSquad.Agents.Orchestration;
 using AgentSquad.Cli.Console;
 using AgentSquad.Core.Abstractions;
@@ -88,17 +89,24 @@ internal static class Program
             Description = "Fazer uma chamada real a cada deployment do Foundry para provar que o caminho inteiro funciona.",
         };
 
+        var probeCopilotOption = new Option<bool>("--probe-copilot")
+        {
+            Description = "Pedir a um agente Copilot de verdade que escreva um arquivo, em um diretório descartável.",
+        };
+
         var doctorCommand = new Command("doctor", "Verifica todos os pré-requisitos e diz exatamente como corrigir o que estiver faltando.")
         {
             ownerOption,
             repoOption,
-            probeOption
+            probeOption,
+            probeCopilotOption
         };
 
         doctorCommand.SetAction((parseResult, cancellationToken) => DoctorAsync(
             console,
             new CliOverrides(parseResult.GetValue(ownerOption), parseResult.GetValue(repoOption), null),
             parseResult.GetValue(probeOption),
+            parseResult.GetValue(probeCopilotOption),
             cancellationToken));
 
         var root = new RootCommand("Agent Squad — fábrica de software autônoma com .NET 10, Microsoft Agent Framework, Microsoft Foundry e GitHub Copilot.")
@@ -214,6 +222,7 @@ internal static class Program
         IAnsiConsole console,
         CliOverrides overrides,
         bool probeModels,
+        bool probeCopilot,
         CancellationToken cancellationToken)
     {
         RenderBanner(console);
@@ -222,12 +231,59 @@ internal static class Program
 
         bool healthy = await RunPrerequisiteChecksAsync(console, host, cancellationToken);
 
-        if (!probeModels)
+        if (probeModels)
         {
-            return healthy ? 0 : 3;
+            healthy &= await ProbeModelsAsync(console, host, cancellationToken);
         }
 
-        return await ProbeModelsAsync(console, host, cancellationToken) && healthy ? 0 : 3;
+        if (probeCopilot)
+        {
+            healthy &= await ProbeCopilotAsync(console, host, cancellationToken);
+        }
+
+        return healthy ? 0 : 3;
+    }
+
+    private static async Task<bool> ProbeCopilotAsync(
+        IAnsiConsole console,
+        IHost host,
+        CancellationToken cancellationToken)
+    {
+        CopilotSmokeTest smokeTest = host.Services.GetRequiredService<CopilotSmokeTest>();
+
+        console.Write(new Rule("[bold blue]Agente de codificação GitHub Copilot[/]").LeftJustified());
+        console.WriteLine();
+
+        CopilotProbe probe = await console
+            .Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Pedindo a um agente real que escreva um arquivo…", _ => smokeTest.ProbeAsync(cancellationToken));
+
+        Table table = new Table { Border = TableBorder.Rounded }.AddColumn(" ").AddColumn(" ");
+        table.AddRow("Runtime", probe.Reachable ? "[green]iniciou e respondeu[/]" : "[red]não respondeu[/]");
+        table.AddRow("Modelo", Markup.Escape(probe.Model));
+        table.AddRow("Arquivo criado", probe.FileWasWritten ? "[green]sim[/]" : "[red]não[/]");
+        table.AddRow("Relatório estruturado", probe.ReportParsed ? "[green]sim[/]" : "[yellow]não[/]");
+        table.AddRow("Duração", $"{probe.Duration.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture)} s");
+        table.AddRow("Resultado", Markup.Escape(probe.Detail));
+
+        if (probe.DeniedActions.Count > 0)
+        {
+            table.AddRow("Permissões negadas", Markup.Escape(string.Join("; ", probe.DeniedActions)));
+        }
+
+        console.Write(table);
+        console.WriteLine();
+
+        // Writing the file is the assertion that matters: a runtime that starts but cannot
+        // act is worse than one that fails outright, because it looks healthy.
+        bool healthy = probe.Reachable && probe.FileWasWritten;
+
+        console.MarkupLine(healthy
+            ? "[green]O agente de codificação escreveu um arquivo de verdade. O caminho do Copilot está funcionando.[/]\n"
+            : "[red]O agente não conseguiu produzir o arquivo. Veja o resultado acima.[/]\n");
+
+        return healthy;
     }
 
     private static async Task<bool> ProbeModelsAsync(
@@ -459,4 +515,5 @@ internal static class Program
 /// <param name="Repository">GitHub repository.</param>
 /// <param name="Parallelism">Maximum concurrent coding agents.</param>
 internal sealed record CliOverrides(string? Owner, string? Repository, int? Parallelism);
+
 

@@ -694,14 +694,16 @@ public sealed partial class SquadOrchestrator(
 
         await _issueTracker.EnsureLabelsAsync(SquadLabels.For(plan), cancellationToken);
 
-        int milestone = await _issueTracker.EnsureMilestoneAsync(
+        await _issueTracker.EnsureMilestoneAsync(
             plan.Title,
             $"Entrega planejada automaticamente pelo Agent Squad na execução {runId}.",
             cancellationToken);
 
         IReadOnlyList<TrackedIssue> issues = await _issueTracker.CreateIssuesAsync(
             plan.Items,
-            milestone,
+
+            // By title, not by number: the GitHub CLI matches milestones by name.
+            plan.Title,
             item => IssueBodyRenderer.Render(item, plan.Title, runId.Value),
             cancellationToken);
 

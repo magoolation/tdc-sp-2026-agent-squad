@@ -62,13 +62,17 @@ public interface IIssueTracker
     /// Creates one issue per work item.
     /// </summary>
     /// <param name="items">The work items to publish.</param>
-    /// <param name="milestoneNumber">Milestone to attach, or <see langword="null"/>.</param>
+    /// <param name="milestoneTitle">
+    /// Milestone to attach, by <b>title</b>, or <see langword="null"/> for none. The GitHub
+    /// CLI matches milestones by name; passing the number makes it look for a milestone
+    /// literally called "1".
+    /// </param>
     /// <param name="bodyRenderer">Renders the issue body for a work item.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created issues, in the same order as <paramref name="items"/>.</returns>
     Task<IReadOnlyList<TrackedIssue>> CreateIssuesAsync(
         IReadOnlyList<WorkItem> items,
-        int? milestoneNumber,
+        string? milestoneTitle,
         Func<WorkItem, string> bodyRenderer,
         CancellationToken cancellationToken);
 

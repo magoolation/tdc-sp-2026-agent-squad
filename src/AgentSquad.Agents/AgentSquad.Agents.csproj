@@ -13,13 +13,24 @@
   <ItemGroup Label="Microsoft Agent Framework">
     <PackageReference Include="Microsoft.Agents.AI" />
     <PackageReference Include="Microsoft.Agents.AI.Workflows" />
-    <!--
-      Brings GitHub.Copilot.SDK transitively, whose MSBuild targets download and
-      version-pin the Copilot runtime into this project's output. Referenced here only,
-      so the ~140 MB runtime is staged once rather than by every project in the solution.
-    -->
     <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" />
     <PackageReference Include="Microsoft.Agents.AI.Foundry" />
+  </ItemGroup>
+
+  <ItemGroup Label="GitHub Copilot SDK">
+    <!--
+      Referenced DIRECTLY, and that matters. Microsoft.Agents.AI.GitHub.Copilot brings the
+      SDK transitively and carries a buildTransitive bridge that downloads the Copilot
+      runtime — but the bridge bakes in the CLI version that *it* was built against
+      (1.0.79), while the SDK resolved here is newer (1.0.14) and expects a different
+      runtime layout: `copilot-runtime.exe` + `runtime.node` rather than `copilot.exe` +
+      `copilot_runtime.dll`.
+      The skew is silent at build time and fails at the first RunAsync with
+      "Copilot runtime wrapper not found". A direct reference makes NuGet import the SDK's
+      own build/ targets, which pin the runtime to the version the managed assembly expects.
+      Referenced only here, so the ~150 MB runtime is staged once.
+    -->
+    <PackageReference Include="GitHub.Copilot.SDK" />
   </ItemGroup>
 
   <ItemGroup Label="Microsoft Foundry">

@@ -69,6 +69,7 @@ public static class SquadServiceCollectionExtensions
         services.AddSingleton<FoundrySmokeTest>();
         services.AddSingleton<SquadAgentSet>();
         services.AddSingleton<ICodingAgentFactory, Implementation.CopilotCodingAgentFactory>();
+        services.AddSingleton<Implementation.CopilotSmokeTest>();
 
         // ---- Run stream ----------------------------------------------------------------
         services.AddSingleton<RunEventBus>();

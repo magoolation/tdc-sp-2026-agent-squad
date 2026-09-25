@@ -122,7 +122,7 @@ public sealed partial class GitHubCliIssueTracker(
     /// <inheritdoc />
     public async Task<IReadOnlyList<TrackedIssue>> CreateIssuesAsync(
         IReadOnlyList<WorkItem> items,
-        int? milestoneNumber,
+        string? milestoneTitle,
         Func<WorkItem, string> bodyRenderer,
         CancellationToken cancellationToken)
     {
@@ -146,7 +146,7 @@ public sealed partial class GitHubCliIssueTracker(
 
                 try
                 {
-                    results[index] = await CreateSingleIssueAsync(items[index], milestoneNumber, bodyRenderer, token);
+                    results[index] = await CreateSingleIssueAsync(items[index], milestoneTitle, bodyRenderer, token);
                 }
                 finally
                 {
@@ -298,7 +298,7 @@ public sealed partial class GitHubCliIssueTracker(
 
     private async Task<TrackedIssue> CreateSingleIssueAsync(
         WorkItem item,
-        int? milestoneNumber,
+        string? milestoneTitle,
         Func<WorkItem, string> bodyRenderer,
         CancellationToken cancellationToken)
     {
@@ -322,10 +322,13 @@ public sealed partial class GitHubCliIssueTracker(
                 arguments.Add(label);
             }
 
-            if (milestoneNumber is { } milestone)
+            if (!string.IsNullOrWhiteSpace(milestoneTitle))
             {
+                // By title. `gh issue create --milestone` matches on name, so passing the
+                // number fails with "could not add to milestone '1': '1' not found" — and
+                // it fails per issue, after the planning phase has already been paid for.
                 arguments.Add("--milestone");
-                arguments.Add(milestone.ToString(CultureInfo.InvariantCulture));
+                arguments.Add(milestoneTitle);
             }
 
             ProcessResult result = await GhAsync(cancellationToken, [.. arguments]);
