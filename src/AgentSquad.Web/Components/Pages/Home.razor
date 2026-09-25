@@ -1,0 +1,115 @@
+@page "/"
+@rendermode InteractiveServer
+@inject RunCoordinator Coordinator
+@inject NavigationManager Navigation
+
+<PageTitle>Agent Squad — nova execução</PageTitle>
+
+<h1>O que vamos construir?</h1>
+
+<p class="lede">
+    Descreva o pedido em linguagem natural, ou aponte para a transcrição de uma reunião de
+    levantamento de requisitos. A fábrica entende o repositório alvo, levanta os requisitos,
+    pergunta o que for ambíguo, monta um plano para a sua aprovação, publica as issues no
+    GitHub e dispara agentes em paralelo — cada um em seu próprio <code>git worktree</code>.
+</p>
+
+@if (Coordinator.IsBusy)
+{
+    <div class="callout callout-warning" role="status">
+        <strong>Já existe uma execução em andamento.</strong>
+        Uma execução de cada vez: duas disputariam o mesmo clone local e os mesmos worktrees.
+        <a href="/runs">Acompanhar a execução atual →</a>
+    </div>
+}
+
+<EditForm Model="_form" OnValidSubmit="StartAsync" FormName="new-run">
+    <DataAnnotationsValidator />
+
+    <fieldset disabled="@Coordinator.IsBusy">
+        <label for="request">
+            Pedido
+            <span class="hint">O que precisa existir, do ponto de vista de quem vai usar.</span>
+        </label>
+        <InputTextArea id="request" @bind-Value="_form.Request" rows="6"
+                       placeholder="Ex.: preciso de uma API de catálogo de produtos com busca paginada, cache e testes de integração." />
+
+        <label for="transcript">
+            Transcrição da reunião <span class="optional">(opcional)</span>
+            <span class="hint">
+                Caminho para um arquivo de texto. A fábrica extrai decisões, requisitos declarados,
+                restrições e — o mais valioso — as pendências que ninguém resolveu na reunião.
+            </span>
+        </label>
+        <InputText id="transcript" @bind-Value="_form.TranscriptPath"
+                   placeholder="samples/meeting-transcripts/kickoff-catalogo.md" />
+
+        <div class="options">
+            <label class="checkbox">
+                <InputCheckbox @bind-Value="_form.PlanOnly" />
+                Parar depois do plano, sem criar issues
+                <span class="hint">Útil para ensaiar a leitura do plano sem escrever nada no GitHub.</span>
+            </label>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="callout callout-error" role="alert">@_error</div>
+        }
+
+        <button type="submit" class="primary" disabled="@Coordinator.IsBusy">
+            Iniciar execução
+        </button>
+    </fieldset>
+</EditForm>
+
+@code {
+    private readonly NewRunForm _form = new();
+    private string? _error;
+
+    protected override void OnInitialized() => Coordinator.Changed += OnCoordinatorChanged;
+
+    private void OnCoordinatorChanged() => InvokeAsync(StateHasChanged);
+
+    private void StartAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Request) && string.IsNullOrWhiteSpace(_form.TranscriptPath))
+        {
+            _error = "Informe um pedido, uma transcrição, ou os dois.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_form.TranscriptPath) && !File.Exists(_form.TranscriptPath))
+        {
+            _error = $"A transcrição não foi encontrada: {_form.TranscriptPath}";
+            return;
+        }
+
+        var request = new SquadRunRequest(
+            _form.Request ?? string.Empty,
+            string.IsNullOrWhiteSpace(_form.TranscriptPath) ? null : _form.TranscriptPath,
+            Unattended: false,
+            StopAfterPlan: _form.PlanOnly);
+
+        if (!Coordinator.TryStart(request))
+        {
+            _error = "Uma execução já está em andamento.";
+            return;
+        }
+
+        Navigation.NavigateTo("/runs");
+    }
+
+    public void Dispose() => Coordinator.Changed -= OnCoordinatorChanged;
+
+    private sealed class NewRunForm
+    {
+        public string? Request { get; set; }
+
+        public string? TranscriptPath { get; set; }
+
+        public bool PlanOnly { get; set; }
+    }
+}

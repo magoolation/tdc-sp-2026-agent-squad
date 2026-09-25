@@ -1,0 +1,71 @@
+@* The human-in-the-loop moment for requirements (AI-005). Each option shows its real
+   consequence, so the choice is between outcomes rather than between labels. *@
+
+<section class="decision decision-questions" aria-labelledby="questions-heading">
+    <h2 id="questions-heading">
+        <span class="decision-icon" aria-hidden="true">?</span>
+        O analista de requisitos precisa de você
+    </h2>
+
+    <p class="decision-lede">
+        A execução está parada até estas respostas. Deixar em branco usa o padrão declarado.
+    </p>
+
+    @foreach (OpenQuestion question in Questions)
+    {
+        <article class="question @(question.Blocking ? "question-blocking" : null)" @key="question.Id">
+            <header>
+                <span class="question-id">@question.Id</span>
+                @if (question.Blocking)
+                {
+                    <span class="badge badge-blocking">bloqueante</span>
+                }
+                <h3>@question.Question</h3>
+            </header>
+
+            <p class="question-why"><strong>Por que importa:</strong> @question.Why</p>
+
+            <div class="question-options" role="radiogroup" aria-label="@question.Question">
+                @foreach (QuestionOption option in question.Options)
+                {
+                    <label class="option @(Selected(question.Id) == option.Label ? "option-selected" : null)">
+                        <input type="radio"
+                               name="@question.Id"
+                               value="@option.Label"
+                               checked="@(Selected(question.Id) == option.Label)"
+                               @onchange="@(() => Select(question.Id, option.Label))" />
+                        <span class="option-label">@option.Label</span>
+                        <span class="option-impact">@option.Impact</span>
+                    </label>
+                }
+            </div>
+
+            <p class="question-default">
+                Se ficar sem resposta: <strong>@question.DefaultIfUnanswered</strong>
+            </p>
+        </article>
+    }
+
+    <button class="primary" @onclick="Submit">Responder e continuar</button>
+</section>
+
+@code {
+    /// <summary>The questions to ask.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required IReadOnlyList<OpenQuestion> Questions { get; set; }
+
+    /// <summary>Raised with one answer per question.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required EventCallback<IReadOnlyDictionary<string, string>> OnSubmit { get; set; }
+
+    private readonly Dictionary<string, string> _answers = new(StringComparer.Ordinal);
+
+    private string? Selected(string questionId) =>
+        _answers.TryGetValue(questionId, out string? value) ? value : null;
+
+    private void Select(string questionId, string label) => _answers[questionId] = label;
+
+    private Task Submit() => OnSubmit.InvokeAsync(_answers);
+}

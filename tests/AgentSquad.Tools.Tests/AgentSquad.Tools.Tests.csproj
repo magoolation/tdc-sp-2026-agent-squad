@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AgentSquad.Tools.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AgentSquad.Tools\AgentSquad.Tools.csproj" />
+  </ItemGroup>
+
+</Project>

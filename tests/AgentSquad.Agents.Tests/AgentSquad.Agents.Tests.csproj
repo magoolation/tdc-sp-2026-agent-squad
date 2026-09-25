@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AgentSquad.Agents.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AgentSquad.Agents\AgentSquad.Agents.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!--
+      The Copilot runtime is ~140 MB and this project only exercises managed logic,
+      so there is no reason to stage it into the test output on every build.
+    -->
+    <CopilotSkipCliDownload>true</CopilotSkipCliDownload>
+  </PropertyGroup>
+
+</Project>

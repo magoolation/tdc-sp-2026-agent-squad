@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>AgentSquad.Web</RootNamespace>
+    <Description>Blazor Server dashboard for the Agent Squad software factory: live run progress, plan approval and pull-request links.</Description>
+    <UserSecretsId>agent-squad-tdcsp2026</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentSquad.Agents\AgentSquad.Agents.csproj" />
+    <ProjectReference Include="..\AgentSquad.ServiceDefaults\AgentSquad.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <!--
+    Microsoft.Extensions.Configuration.UserSecrets is not referenced here: the Web SDK
+    already provides it, and an explicit reference trips NU1510.
+  -->
+
+</Project>

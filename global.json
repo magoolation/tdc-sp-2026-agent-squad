@@ -1,0 +1,19 @@
+{
+  "sdk": {
+    "version": "10.0.400",
+    "rollForward": "latestFeature",
+    "allowPrerelease": false
+  },
+
+  "//test": [
+    "Opts `dotnet test` into Microsoft.Testing.Platform. Required on the .NET 10 SDK:",
+    "without it, `dotnet test` still routes through VSTest, which Microsoft.Testing.Platform",
+    "no longer supports, and the build fails with:",
+    "  'Testing with VSTest target is no longer supported by Microsoft.Testing.Platform",
+    "   on .NET 10 SDK and later.'",
+    "This setting lived in a dotnet.config file up to .NET 10 RC1; it moved here in RC2."
+  ],
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
+  }
+}

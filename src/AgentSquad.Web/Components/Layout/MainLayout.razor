@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+
+<div class="shell">
+    <header class="shell-header">
+        <a class="brand" href="/">
+            <span class="brand-mark" aria-hidden="true">◆</span>
+            <span class="brand-text">
+                <strong>Agent Squad</strong>
+                <small>fábrica de software autônoma</small>
+            </span>
+        </a>
+
+        <nav class="shell-nav">
+            <NavLink href="/" Match="NavLinkMatch.All">Nova execução</NavLink>
+            <NavLink href="/runs">Execuções</NavLink>
+        </nav>
+
+        <div class="shell-stack" aria-label="Stack utilizada">
+            .NET 10 · Agent Framework · Microsoft Foundry · GitHub Copilot
+        </div>
+    </header>
+
+    <main class="shell-main">
+        @Body
+    </main>
+</div>

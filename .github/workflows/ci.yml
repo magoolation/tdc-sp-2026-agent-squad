@@ -1,0 +1,90 @@
+name: CI
+
+# The same gate the autonomous agents face. A pull request opened by an agent goes
+# through exactly this, with no exception (PRC-004) — that equality is the point.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  # The Copilot runtime is ~140 MB and CI never launches a coding agent.
+  CopilotSkipCliDownload: true
+
+jobs:
+  gate:
+    name: Validation gate
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore AgentSquad.slnx
+
+      - name: Format
+        run: dotnet format AgentSquad.slnx --verify-no-changes --severity info --no-restore
+
+      - name: Build
+        run: dotnet build AgentSquad.slnx --no-restore -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test AgentSquad.slnx --no-build -c Release
+
+      - name: Vulnerable packages
+        shell: pwsh
+        run: |
+          # `dotnet list package --vulnerable` exits 0 even when it finds something,
+          # so the outcome has to be read out of the text.
+          $output = dotnet list AgentSquad.slnx package --vulnerable --include-transitive | Out-String
+          Write-Host $output
+          if ($output -match 'High|Critical') {
+            Write-Error 'A package with a High or Critical vulnerability is present (SEC-011).'
+            exit 1
+          }
+
+      - name: Deprecated packages
+        continue-on-error: true
+        run: dotnet list AgentSquad.slnx package --deprecated
+
+  infra:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compile Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Lint Bicep
+        run: az bicep lint --file infra/main.bicep

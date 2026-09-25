@@ -1,0 +1,186 @@
+@page "/runs"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject RunCoordinator Coordinator
+@inject WebApprovalGateway Approvals
+@inject IRunEventStream EventStream
+
+<PageTitle>Agent Squad — execução</PageTitle>
+
+<h1>Execução</h1>
+
+@if (Approvals.Pending is PendingQuestions questions)
+{
+    <QuestionsPanel Questions="questions.Questions" OnSubmit="SubmitAnswers" />
+}
+else if (Approvals.Pending is PendingPlan plan)
+{
+    <PlanPanel Plan="plan.Plan" Issues="plan.Issues" OnDecide="SubmitPlanDecision" />
+}
+
+@if (_current is null)
+{
+    <p class="lede">Nenhuma execução em andamento. <a href="/">Iniciar uma →</a></p>
+}
+else
+{
+    <section class="run-header">
+        <div>
+            <span class="badge @(_current.IsRunning ? "badge-live" : "badge-done")">
+                @(_current.IsRunning ? "em andamento" : "concluída")
+            </span>
+            <span class="run-id">@(_current.RunId?.Value ?? "iniciando…")</span>
+        </div>
+        <p class="run-request">@_current.Request</p>
+    </section>
+
+    @if (_current.Result is { } result)
+    {
+        <RunSummary Result="result" />
+    }
+
+    <section class="events" aria-live="polite" aria-label="Progresso da execução">
+        <h2>Progresso</h2>
+
+        @if (_events.Count == 0)
+        {
+            <p class="muted">Aguardando os primeiros eventos…</p>
+        }
+
+        <ol class="event-list">
+            @foreach (RunEvent evt in _events)
+            {
+                <li class="event event-@evt.Level.ToString().ToLowerInvariant()" @key="evt.Sequence">
+                    <span class="event-time">@evt.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)</span>
+                    <span class="event-phase">@PhaseLabel(evt.Phase)</span>
+                    <span class="event-source">@evt.Source</span>
+                    @if (evt.IssueNumber is { } issue)
+                    {
+                        <span class="event-issue">#@issue</span>
+                    }
+                    <span class="event-message">@evt.Message</span>
+                    @if (evt.Data?.TryGetValue("url", out string? url) == true)
+                    {
+                        <a class="event-link" href="@url" target="_blank" rel="noopener noreferrer">abrir ↗</a>
+                    }
+                </li>
+            }
+        </ol>
+    </section>
+}
+
+@code {
+    private readonly List<RunEvent> _events = [];
+    private RunHandle? _current;
+    private CancellationTokenSource? _subscription;
+    private RunId? _subscribedTo;
+    private DateTimeOffset _lastRender = DateTimeOffset.MinValue;
+
+    protected override void OnInitialized()
+    {
+        Coordinator.Changed += OnStateChanged;
+        Approvals.Changed += OnStateChanged;
+        Refresh();
+    }
+
+    private void OnStateChanged() => InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    private void Refresh()
+    {
+        _current = Coordinator.Runs().FirstOrDefault();
+
+        if (_current?.RunId is { } runId && _subscribedTo?.Value != runId.Value)
+        {
+            _subscribedTo = runId;
+            _ = SubscribeAsync(runId);
+        }
+    }
+
+    private async Task SubscribeAsync(RunId runId)
+    {
+        if (_subscription is not null)
+        {
+            await _subscription.CancelAsync();
+            _subscription.Dispose();
+        }
+
+        _subscription = new CancellationTokenSource();
+        CancellationToken token = _subscription.Token;
+
+        _events.Clear();
+
+        try
+        {
+            // The bus replays everything that already happened before following live, so
+            // opening this page mid-run shows the whole run rather than just the tail.
+            await foreach (RunEvent evt in EventStream.SubscribeAsync(runId, token))
+            {
+                _events.Add(evt);
+                await ThrottledRenderAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The page moved on, or the host is shutting down.
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Renders at most ten times a second.
+    /// </summary>
+    /// <remarks>
+    /// A wave of parallel agents produces events far faster than a human can read them, and
+    /// rendering every one would saturate the SignalR circuit and make the page stutter.
+    /// </remarks>
+    private async Task ThrottledRenderAsync()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        if (now - _lastRender < TimeSpan.FromMilliseconds(100))
+        {
+            return;
+        }
+
+        _lastRender = now;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void SubmitAnswers(IReadOnlyDictionary<string, string> answers) =>
+        Approvals.SubmitAnswers(answers, Environment.UserName);
+
+    private void SubmitPlanDecision((PlanVerdict Verdict, string? Feedback) decision) =>
+        Approvals.SubmitPlanDecision(decision.Verdict, decision.Feedback, Environment.UserName);
+
+    private static string PhaseLabel(RunPhase phase) => phase switch
+    {
+        RunPhase.Intake => "intake",
+        RunPhase.Requirements => "requisitos",
+        RunPhase.Clarification => "esclarecimento",
+        RunPhase.Planning => "planejamento",
+        RunPhase.PlanApproval => "aprovação",
+        RunPhase.Publishing => "publicação",
+        RunPhase.Implementation => "implementação",
+        RunPhase.Validation => "validação",
+        RunPhase.Review => "revisão",
+        RunPhase.Delivery => "entrega",
+        _ => "concluído",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        Coordinator.Changed -= OnStateChanged;
+        Approvals.Changed -= OnStateChanged;
+
+        if (_subscription is not null)
+        {
+            await _subscription.CancelAsync();
+            _subscription.Dispose();
+        }
+    }
+}

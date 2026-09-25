@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AgentSquad.Agents</RootNamespace>
+    <Description>Microsoft Agent Framework agents backed by Microsoft Foundry, GitHub Copilot coding agents, and the orchestration that drives them.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentSquad.Core\AgentSquad.Core.csproj" />
+    <ProjectReference Include="..\AgentSquad.Tools\AgentSquad.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="Microsoft Agent Framework">
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" />
+    <!--
+      Brings GitHub.Copilot.SDK transitively, whose MSBuild targets download and
+      version-pin the Copilot runtime into this project's output. Referenced here only,
+      so the ~140 MB runtime is staged once rather than by every project in the solution.
+    -->
+    <PackageReference Include="Microsoft.Agents.AI.GitHub.Copilot" />
+    <PackageReference Include="Microsoft.Agents.AI.Foundry" />
+  </ItemGroup>
+
+  <ItemGroup Label="Microsoft Foundry">
+    <PackageReference Include="Azure.AI.Projects" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+  </ItemGroup>
+
+</Project>

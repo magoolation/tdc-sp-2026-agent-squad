@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# .NET
+# ---------------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.binlog
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+
+# Test / coverage
+[Tt]est[Rr]esults/
+coverage/
+*.coverage
+*.coverxml
+*.opencover.xml
+TestResults/
+
+# Rider / VS / VS Code
+.vs/
+.idea/
+*.swp
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+
+# ---------------------------------------------------------------------------
+# Azure / azd
+# ---------------------------------------------------------------------------
+.azure/
+*.azurePubxml
+*.pubxml
+*.pubxml.user
+
+# ---------------------------------------------------------------------------
+# Secrets — NEVER commit
+# ---------------------------------------------------------------------------
+*.env
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.key
+*.pem
+
+# ---------------------------------------------------------------------------
+# Agent Squad runtime state
+# ---------------------------------------------------------------------------
+# Worktrees created by the orchestrator for parallel coding agents
+.worktrees/
+# Per-run transcripts, plans, logs and agent output
+.squad/runs/
+.squad/cache/
+*.squad.log
+
+# ---------------------------------------------------------------------------
+# Node (Copilot CLI is distributed via npm)
+# ---------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

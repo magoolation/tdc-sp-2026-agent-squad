@@ -1,0 +1,114 @@
+<Project>
+
+  <!--
+    ==========================================================================
+    Shared build settings — TDC São Paulo 2026 · Agent Squad
+    See docs/engineering-rules.md (BLD-001..BLD-006) for the rules this enforces.
+    ==========================================================================
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+  </PropertyGroup>
+
+  <!-- ENG/BLD: zero tolerance for warnings; code style is part of the build. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!--
+      `Recommended` rather than `All`: `All` turns on opinionated API-design rules
+      (URLs must be System.Uri, no nested types) that add noise without catching defects.
+      Every CA5xxx security rule is escalated back to `error` in .editorconfig, which is
+      the set docs/engineering-rules.md §5 actually depends on.
+    -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    Experimental/preview API diagnostics we accept on purpose. Each one is a
+    deliberate, documented decision — not a blanket suppression (AGENTS.md §3.6).
+
+      MAAI001   Agent Framework experimental members — present even inside stable 1.22.0
+      MEAI001   Microsoft.Extensions.AI experimental surface
+      OPENAI001 OpenAI Responses API (the GA path on Foundry today)
+      AOAI001   Azure.AI.OpenAI experimental surface
+      GHCP001   GitHub.Copilot.SDK experimental surface
+      AZPROV001 Azure.AI.Projects preview surface
+      CA1848    LoggerMessage source-gen: not worth the noise in a sample app
+      CA1515    public types in an application assembly
+      CA2007    ConfigureAwait: no SynchronizationContext in any of our hosts
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);MAAI001;MEAI001;OPENAI001;AOAI001;GHCP001;AZPROV001;CA1848;CA1515;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <!-- Deterministic, reproducible builds (BLD-005). -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <DebugType>portable</DebugType>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <!-- Central Package Management (BLD-001). -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>Agent Squad</Product>
+    <Company>TDC São Paulo 2026</Company>
+    <Authors>Alexandre Costa</Authors>
+    <Copyright>Copyright © 2026</Copyright>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <NeutralLanguage>en-US</NeutralLanguage>
+  </PropertyGroup>
+
+  <!--
+    Test projects: identified by folder, so no per-project boilerplate.
+    xUnit v3 on Microsoft.Testing.Platform (TST-*, AGENTS.md §10).
+  -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').Contains('$([System.IO.Path]::DirectorySeparatorChar)tests$([System.IO.Path]::DirectorySeparatorChar)'))">
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!--
+      Switches xUnit v3 from its own in-process console runner to the
+      Microsoft.Testing.Platform entry point, which is what `dotnet test` drives on the
+      .NET 10 SDK (see the `test.runner` setting in global.json).
+    -->
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformCaptureOutput>false</TestingPlatformCaptureOutput>
+    <!--
+      Kept on even though tests need no XML docs: IDE0005 (unnecessary using) only runs
+      during build when a documentation file is generated, and an unused using is worth
+      catching in tests too. CS1591 below waives the missing-comment warning.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CA1707;CA1861;CA5394;CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <Using Include="Xunit" />
+    <Using Include="AwesomeAssertions" />
+  </ItemGroup>
+
+</Project>

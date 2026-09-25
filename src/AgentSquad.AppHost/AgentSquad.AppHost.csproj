@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="13.5.4" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AgentSquad.AppHost</RootNamespace>
+    <IsAspireHost>true</IsAspireHost>
+    <!-- Required by `aspire publish` and `aspire deploy`; without it ASPIRE010 warns. -->
+    <AspireUseCliBundle>true</AspireUseCliBundle>
+    <UserSecretsId>agent-squad-tdcsp2026-apphost</UserSecretsId>
+    <Description>Aspire orchestration for the Agent Squad dashboard, with the Aspire dashboard as the OpenTelemetry viewer for agent traces.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentSquad.Web\AgentSquad.Web.csproj" IsAspireProjectResource="true" />
+  </ItemGroup>
+
+</Project>

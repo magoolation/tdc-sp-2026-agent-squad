@@ -1,0 +1,72 @@
+@* What the run produced. The pull-request links are the payload the human actually wants. *@
+
+<section class="summary" aria-labelledby="summary-heading">
+    <h2 id="summary-heading">Resultado</h2>
+
+    <div class="metrics">
+        <div class="metric">
+            <span class="metric-value">@Result.Issues.Count</span>
+            <span class="metric-label">issues criadas</span>
+        </div>
+        <div class="metric">
+            <span class="metric-value">@Result.Succeeded.Count<span class="metric-of">/@Result.Outcomes.Count</span></span>
+            <span class="metric-label">aprovadas no gate</span>
+        </div>
+        <div class="metric">
+            <span class="metric-value">@Result.PullRequests.Count</span>
+            <span class="metric-label">pull requests</span>
+        </div>
+        <div class="metric">
+            <span class="metric-value">@Result.Duration.TotalMinutes.ToString("F1", CultureInfo.InvariantCulture)</span>
+            <span class="metric-label">minutos</span>
+        </div>
+    </div>
+
+    <p class="summary-message">@Result.Message</p>
+
+    @if (Result.PullRequests.Count > 0)
+    {
+        <h3>Pull requests para revisão humana</h3>
+        <ul class="pr-list">
+            @foreach (var pullRequest in Result.PullRequests)
+            {
+                <li @key="pullRequest.Number">
+                    <a href="@pullRequest.Url" target="_blank" rel="noopener noreferrer">
+                        #@pullRequest.Number
+                    </a>
+                    <span class="pr-branch"><code>@pullRequest.Branch</code></span>
+                    @if (pullRequest.IsDraft)
+                    {
+                        <span class="chip">draft</span>
+                    }
+                </li>
+            }
+        </ul>
+        <p class="muted">
+            O merge é sempre humano. O gate garante que o código compila, está formatado e
+            passa nos testes — não que ele resolve o problema certo.
+        </p>
+    }
+
+    @if (Result.Failed.Count > 0)
+    {
+        <h3>Work items que não passaram no gate</h3>
+        <ul class="failed-list">
+            @foreach (var failed in Result.Failed)
+            {
+                <li @key="failed.IssueNumber">
+                    <strong>#@failed.IssueNumber</strong>
+                    <span class="chip chip-error">@failed.Report.Status</span>
+                    @failed.Report.Summary
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    /// <summary>The finished run.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required SquadRunResult Result { get; set; }
+}

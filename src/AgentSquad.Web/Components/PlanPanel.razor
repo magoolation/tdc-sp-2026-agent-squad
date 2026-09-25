@@ -1,0 +1,158 @@
+@* Plan approval. Nothing is written to GitHub until someone clicks here (AI-005). *@
+
+<section class="decision decision-plan" aria-labelledby="plan-heading">
+    <h2 id="plan-heading">
+        <span class="decision-icon" aria-hidden="true">◆</span>
+        Aprovar o plano
+    </h2>
+
+    <p class="decision-lede">
+        Nada é escrito no GitHub até você decidir. Depois daqui, a fábrica cria as issues e
+        dispara os agentes.
+    </p>
+
+    <h3 class="plan-title">@Plan.Title</h3>
+    <p class="plan-overview">@Plan.Overview</p>
+
+    @if (Plan.Architecture.Count > 0)
+    {
+        <details open>
+            <summary>Decisões de arquitetura</summary>
+            <ul>
+                @foreach (string decision in Plan.Architecture)
+                {
+                    <li>@decision</li>
+                }
+            </ul>
+        </details>
+    }
+
+    @{
+        IReadOnlyList<IReadOnlyList<WorkItem>> waves = Plan.Waves();
+    }
+
+    @for (int index = 0; index < waves.Count; index++)
+    {
+        int waveNumber = index + 1;
+        IReadOnlyList<WorkItem> wave = waves[index];
+
+        <div class="wave" @key="waveNumber">
+            <h4>
+                Onda @waveNumber
+                <span class="wave-count">@wave.Count agente(s) em paralelo</span>
+            </h4>
+
+            <table class="plan-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Item</th>
+                        <th scope="col">Título</th>
+                        <th scope="col">Área</th>
+                        <th scope="col">Arquivos</th>
+                        <th scope="col">Depende de</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (WorkItem item in wave)
+                    {
+                        <tr @key="item.Key">
+                            <td><code>@item.Key</code></td>
+                            <td>@item.Title</td>
+                            <td><span class="chip">@item.Area</span></td>
+                            <td class="numeric">@item.Files.Count</td>
+                            <td>@(item.DependsOn.Count == 0 ? "—" : string.Join(", ", item.DependsOn))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (Plan.DefaultDecisions.Count > 0)
+    {
+        <details>
+            <summary>Decisões tomadas por padrão — conteste se discordar</summary>
+            <ul>
+                @foreach (string decision in Plan.DefaultDecisions)
+                {
+                    <li>@decision</li>
+                }
+            </ul>
+        </details>
+    }
+
+    @if (Plan.Risks.Count > 0)
+    {
+        <details>
+            <summary>Riscos</summary>
+            <ul>
+                @foreach (string risk in Plan.Risks)
+                {
+                    <li>@risk</li>
+                }
+            </ul>
+        </details>
+    }
+
+    @if (Issues.Count > 0)
+    {
+        <div class="callout callout-warning">
+            <strong>O validador determinístico encontrou problemas.</strong>
+            <ul>
+                @foreach (PlanIssue issue in Issues)
+                {
+                    <li>
+                        <span class="chip chip-@issue.Severity.ToString().ToLowerInvariant()">@issue.Severity</span>
+                        <code>@issue.Code</code> @issue.Message
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="decision-actions">
+        <button class="primary" @onclick="Approve">Aprovar e executar</button>
+        <button class="secondary" @onclick="ToggleRevise">Revisar</button>
+        <button class="danger" @onclick="Abort">Abortar</button>
+    </div>
+
+    @if (_revising)
+    {
+        <div class="revise-box">
+            <label for="feedback">O que precisa mudar?</label>
+            <textarea id="feedback" rows="4" @bind="_feedback"
+                      placeholder="Ex.: W-03 e W-05 estão na mesma onda e ambos tocam Program.cs; separe-os."></textarea>
+            <button class="primary" disabled="@string.IsNullOrWhiteSpace(_feedback)" @onclick="Revise">
+                Devolver ao arquiteto
+            </button>
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>The plan under review.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required DeliveryPlan Plan { get; set; }
+
+    /// <summary>What the deterministic validator found.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required IReadOnlyList<PlanIssue> Issues { get; set; }
+
+    /// <summary>Raised with the human's decision.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required EventCallback<(PlanVerdict Verdict, string? Feedback)> OnDecide { get; set; }
+
+    private bool _revising;
+    private string _feedback = string.Empty;
+
+    private Task Approve() => OnDecide.InvokeAsync((PlanVerdict.Approve, null));
+
+    private Task Abort() => OnDecide.InvokeAsync((PlanVerdict.Abort, null));
+
+    private Task Revise() => OnDecide.InvokeAsync((PlanVerdict.Revise, _feedback));
+
+    private void ToggleRevise() => _revising = !_revising;
+}

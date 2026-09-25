@@ -1,0 +1,107 @@
+<Project>
+
+  <!--
+    ==========================================================================
+    Central Package Management (BLD-001).
+
+    No .csproj in this repository may carry a Version= on a PackageReference.
+    Every version lives here, pinned exactly. Adding a package requires a
+    justification in the pull request (BLD-006): licence, maintenance, size,
+    and which BCL alternative was considered.
+
+    Versions verified against api.nuget.org on 2026-09-25.
+    ==========================================================================
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Microsoft Agent Framework">
+    <!-- Core orchestration. Stable. -->
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.22.0" />
+    <PackageVersion Include="Microsoft.Agents.AI.Abstractions" Version="1.22.0" />
+    <PackageVersion Include="Microsoft.Agents.AI.Workflows" Version="1.22.0" />
+    <!-- Drives the GitHub Copilot SDK as an AIAgent. Stable. -->
+    <PackageVersion Include="Microsoft.Agents.AI.GitHub.Copilot" Version="1.22.0" />
+    <!--
+      Microsoft Foundry connector. Still preview: it is the successor to the
+      abandoned Microsoft.Agents.AI.AzureAI (frozen at 1.0.0-rc5) and it hard-pins
+      Azure.AI.Projects 3.x, which is why Azure.AI.Projects below is on 3.0.0-beta.3.
+    -->
+    <PackageVersion Include="Microsoft.Agents.AI.Foundry" Version="1.22.0-preview.260918.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="GitHub Copilot SDK">
+    <!--
+      Ships the Copilot CLI binary via MSBuild targets and drives it over JSON-RPC
+      in-process. This is what actually writes code in each worktree.
+    -->
+    <PackageVersion Include="GitHub.Copilot.SDK" Version="1.0.14" />
+  </ItemGroup>
+
+  <ItemGroup Label="Microsoft Foundry / Azure">
+    <PackageVersion Include="Azure.AI.Projects" Version="3.0.0-beta.3" />
+    <PackageVersion Include="Azure.AI.Projects.Agents" Version="3.0.0-beta.3" />
+    <PackageVersion Include="Azure.AI.Extensions.OpenAI" Version="3.0.0-beta.3" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Microsoft.Extensions.AI">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Hosting and configuration">
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.10.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability">
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Aspire">
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.5.4" />
+    <PackageVersion Include="Aspire.Hosting.Azure" Version="13.5.4" />
+    <!-- Renamed from Aspire.Hosting.Azure.AIFoundry in Aspire 13.2; AddFoundry(), not AddAzureAIFoundry(). -->
+    <PackageVersion Include="Aspire.Hosting.Foundry" Version="13.5.4-preview.1.26464.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="Console UI">
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <!--
+      System.CommandLine rather than Spectre.Console.Cli: the latter's newest
+      stable (0.55.0) lags Spectre.Console 0.57.2 and would force a downgrade.
+    -->
+    <PackageVersion Include="System.CommandLine" Version="2.0.12" />
+  </ItemGroup>
+
+  <ItemGroup Label="Parsing">
+    <PackageVersion Include="Markdig" Version="1.4.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.10.0" />
+  </ItemGroup>
+
+</Project>
+
