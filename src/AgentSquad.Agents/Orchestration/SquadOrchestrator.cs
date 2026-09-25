@@ -814,7 +814,96 @@ public sealed partial class SquadOrchestrator(
             }
         }
 
+        // The delivery pull request: integration branch into the base branch.
+        //
+        // This is the human gate that actually matters, and without it the run ends with
+        // nothing to approve. Advancing the integration branch marks the per-item pull
+        // requests on it as merged — normal stacked-pull-request behaviour — so the item
+        // pull requests are review units, and this one is the decision.
+        PullRequestRef? delivery = await OpenDeliveryPullRequestAsync(
+            plan, runId, integrationBranch, allOutcomes, allPullRequests, events, cancellationToken);
+
+        if (delivery is not null)
+        {
+            allPullRequests.Add(delivery);
+        }
+
         return (allOutcomes, allPullRequests);
+    }
+
+    /// <summary>
+    /// Opens the pull request that delivers the whole run into the base branch.
+    /// </summary>
+    /// <remarks>
+    /// The per-item pull requests target the integration branch and are the review units.
+    /// This one is the decision: it is the only thing in the run that proposes a change to
+    /// the branch the team actually ships from, and it is what AI-005 means by "the merge
+    /// is always human".
+    /// </remarks>
+    /// <param name="plan">The delivery plan.</param>
+    /// <param name="runId">The run identifier.</param>
+    /// <param name="integrationBranch">The branch holding everything the run produced.</param>
+    /// <param name="outcomes">Every implementation outcome.</param>
+    /// <param name="itemPullRequests">The per-item pull requests already opened.</param>
+    /// <param name="events">Event publisher.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The delivery pull request, or <see langword="null"/> when nothing passed.</returns>
+    private async Task<PullRequestRef?> OpenDeliveryPullRequestAsync(
+        DeliveryPlan plan,
+        RunId runId,
+        string integrationBranch,
+        List<ImplementationOutcome> outcomes,
+        List<PullRequestRef> itemPullRequests,
+        IRunEventPublisher events,
+        CancellationToken cancellationToken)
+    {
+        List<ImplementationOutcome> passed = [.. outcomes.Where(o => o.Validation.Passed)];
+
+        if (passed.Count == 0)
+        {
+            await events.PublishAsync(RunPhase.Delivery, RunEventLevel.Warning, "orchestrator",
+                "Nenhum work item passou no gate; não há o que entregar.", cancellationToken: cancellationToken);
+
+            return null;
+        }
+
+        try
+        {
+            string body = DeliveryPullRequestRenderer.Render(
+                plan, runId.Value, integrationBranch, _gitHub.BaseBranch, outcomes, itemPullRequests);
+
+            PullRequestRef delivery = await _issueTracker.CreatePullRequestAsync(
+                new PullRequestRequest(
+                    Title: $"feat: {plan.Title}",
+                    Body: body,
+                    HeadBranch: integrationBranch,
+                    BaseBranch: _gitHub.BaseBranch,
+                    IssueNumber: 0,
+                    Labels: outcomes.Count == passed.Count
+                        ? ["agent-generated"]
+                        : ["agent-generated", "needs-human"],
+                    Draft: true),
+                cancellationToken);
+
+            await events.PublishAsync(RunPhase.Delivery, RunEventLevel.Milestone, "orchestrator",
+                $"Pull request de entrega #{delivery.Number} aberto: `{integrationBranch}` → `{_gitHub.BaseBranch}`. " +
+                "É aqui que um humano decide.",
+                data: new Dictionary<string, string>(StringComparer.Ordinal) { ["url"] = delivery.Url },
+                cancellationToken: cancellationToken);
+
+            return delivery;
+        }
+#pragma warning disable CA1031 // Failing to open the delivery PR must not discard the work the run already did.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await events.PublishAsync(RunPhase.Delivery, RunEventLevel.Error, "orchestrator",
+                $"O pull request de entrega não pôde ser aberto: {ex.Message}. " +
+                $"O branch `{integrationBranch}` tem todo o trabalho e pode ser aberto à mão.",
+                cancellationToken: cancellationToken);
+
+            return null;
+        }
     }
 
     /// <summary>

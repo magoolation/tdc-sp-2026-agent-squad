@@ -4,8 +4,8 @@
 transcrição de uma reunião de levantamento — e ela entende o repositório, levanta os
 requisitos, pergunta o que for ambíguo, monta um plano para a sua aprovação, publica as
 tarefas como **GitHub issues**, dispara **agentes de codificação em paralelo** (cada um em
-seu próprio `git worktree`), valida tudo com linters, analisadores e testes, e abre um
-**pull request por tarefa** para revisão humana.
+seu próprio `git worktree`), valida tudo com linters, analisadores e testes, e abre
+**um pull request por tarefa** mais **um pull request de entrega** para revisão humana.
 
 > **Demo do TDC São Paulo 2026.**
 > .NET 10 · Microsoft Agent Framework 1.22 · Microsoft Foundry · GitHub Copilot SDK ·
@@ -80,13 +80,32 @@ seu próprio `git worktree`), valida tudo com linters, analisadores e testes, e 
    └──────────────────────────────────────────────────┘
              │
              ▼
-   ┌──────────────────┐   push + PR com relatório de validação,
+   ┌──────────────────┐   push + PR por item, com relatório de validação,
    │  6. ENTREGA      │   apontamentos da revisão e procedência
+   └──────────────────┘   ↓ tudo converge no branch de integração
+             │
+             ▼
+   ┌──────────────────┐   PR de entrega: agent/run-<id> ──▶ main
+   │  7. O PORTÃO     │   o que entrou, o que não entrou, o que revisar
    └──────────────────┘
              │
              ▼
         🛑 O MERGE É SEMPRE HUMANO
 ```
+
+**Dois níveis de pull request, e a diferença importa.** As ondas precisam enxergar umas às
+outras — a onda 3 depende do que a onda 1 escreveu —, então cada onda é integrada num
+branch `agent/run-<runId>` antes da seguinte começar. Os PRs por item apontam para esse
+branch: são as **unidades de revisão**, uma mudança por vez, com o diff isolado. Conforme a
+integração avança, o GitHub marca alguns deles como `MERGED` sozinho — é o que ele faz
+quando os commits de um PR passam a ser alcançáveis pela base, comportamento normal de
+*stacked PRs*, e **não** significa que alguém aprovou.
+
+O que ninguém aprova sozinho é o **PR de entrega**, de `agent/run-<runId>` para `main`. Ele
+é a única coisa na execução que propõe alterar o branch do qual o time entrega, e sai como
+*draft*, com a tabela do que passou no gate, a lista do que reprovou e ficou de fora, os
+riscos que os agentes declararam e as decisões que a fábrica tomou sem perguntar. É esse
+que o AI-005 quer dizer com "o merge é sempre humano".
 
 **Duas decisões de design que valem mais do que o resto:**
 
@@ -421,7 +440,7 @@ Baseado no **Microsoft SDL**, no **OWASP Top 10 for LLM Applications** e no
 | **Escape de sandbox** | Todo caminho é normalizado e comparado com separador final — `C:\wt\i42-evil` **não** satisfaz `C:\wt\i42`. Há teste para isso. |
 | **Segredos** | Zero chave no repositório. Foundry com `disableLocalAuth`; autenticação por Entra ID. Varredura de segredos no diff antes do PR. |
 | **Injeção de comando** | `ProcessStartInfo.ArgumentList` sempre; nunca linha de comando concatenada. Há teste que passa `a && whoami \| echo pwned` como argumento e confirma o round-trip literal. |
-| **Human-in-the-loop** | Plano aprovado por humano antes de qualquer issue. **Merge sempre humano.** |
+| **Human-in-the-loop** | Plano aprovado por humano antes de qualquer issue. O PR de entrega para `main` sai como *draft* e **nenhum agente tem permissão para dar merge nele**. |
 | **Auditabilidade** | Prompt, modelo, tokens, ferramentas chamadas, permissões negadas e diff ficam em `.squad/runs/<runId>/`. |
 | **Fuga de custo** | Teto de tentativas, timeout por agente, timeout por execução, limite de concorrência — todos configuráveis e aplicados. |
 
@@ -606,7 +625,7 @@ Stack trace completo: defina `SQUAD_DEBUG=1`.
 | 18–22 | Plano, ondas, e o validador determinístico pegando conflito | *(na tela)* |
 | 22–24 | Aprovação humana → issues no GitHub | *(navegador)* |
 | 24–34 | Agentes em paralelo, gate ao vivo, dashboard do Aspire | *(Aspire + dashboard)* |
-| 34–38 | Pull requests, com relatório de validação e procedência | *(navegador)* |
+| 34–38 | PRs por item e o **PR de entrega** — onde o humano realmente decide | *(navegador)* |
 | 38–42 | Os achados do §10 — a parte que ninguém mais vai contar | *(slides)* |
 | 42–45 | Perguntas | — |
 
